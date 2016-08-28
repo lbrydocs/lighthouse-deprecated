@@ -2,58 +2,12 @@ import logging.handlers
 from twisted.internet import defer, threads
 from fuzzywuzzy import process
 from lighthouse.conf import CACHE_SIZE, MAX_RETURNED_RESULTS, DEFAULT_WEIGHTS
-from lighthouse.conf import METADATA_INDEXES, DEFAULT_SETTINGS, FILTERED
+from lighthouse.conf import METADATA_INDEXES, DEFAULT_SETTINGS, FILTERED, MAX_RESULTS_CACHED
 
 log = logging.getLogger()
 
 
-class FuzzyNameIndex(object):
-    def __init__(self, updater):
-        self.index = 'name'
-        self.updater = updater
-        self.max_cache = CACHE_SIZE
-        self.results_cache = {}
-        self.search_cache = []
-
-    def search(self, value, max_results=100, settings=None):
-        d = self.get_search_results(value, max_results, settings)
-        return d
-
-    def get_search_results(self, search, max_results, settings):
-        if settings:
-            force = settings.get('force', False)
-        else:
-            force = False
-
-        if not force:
-            if search in self.results_cache:
-                return defer.succeed(self.results_cache[search])
-        return self.process_search(search, max_results)
-
-    def process_search(self, search, max_results):
-        return self._process_search(search, max_results)
-
-    def _process_search(self, search, max_results):
-        d = threads.deferToThread(
-            process.extract,
-            search,
-            self.updater.metadata.keys(),
-            limit=max_results
-        )
-        d.addCallback(lambda r: self._update_cache(search, r))
-        return d
-
-    def _update_cache(self, k, r):
-        if len(self.search_cache) > self.max_cache or k in self.results_cache:
-            del self.results_cache[self.search_cache.pop()]
-        self.search_cache.reverse()
-        self.search_cache.append(k)
-        self.search_cache.reverse()
-        self.results_cache.update({k: r})
-        return r
-
-
-class FuzzyMetadataIndex(object):
+class FuzzyIndex(object):
     def __init__(self, index, updater):
         self.index = index
         self.updater = updater
@@ -61,7 +15,7 @@ class FuzzyMetadataIndex(object):
         self.results_cache = {}
         self.search_cache = []
 
-    def search(self, value, max_results=100, settings=None):
+    def search(self, value, max_results=MAX_RESULTS_CACHED, settings=DEFAULT_SETTINGS):
         d = self.get_search_results(value, max_results, settings)
         return d
 
@@ -79,7 +33,36 @@ class FuzzyMetadataIndex(object):
     def process_search(self, search, max_results, settings):
         return self._process_search(search, max_results, settings)
 
+    def _update_cache(self, k, r):
+        if len(self.search_cache) > self.max_cache or k in self.results_cache:
+            del self.results_cache[self.search_cache.pop()]
+        self.search_cache.reverse()
+        self.search_cache.append(k)
+        self.search_cache.reverse()
+        self.results_cache.update({k: r})
+        return r
+
     def _process_search(self, search, max_results, settings):
+        return defer.fail(NotImplementedError())
+
+
+class FuzzyNameIndex(FuzzyIndex):
+    def __init__(self, updater):
+        FuzzyIndex.__init__(self, 'name', updater)
+
+    def _process_search(self, search, max_results=MAX_RESULTS_CACHED, settings=DEFAULT_SETTINGS):
+        d = threads.deferToThread(
+            process.extract,
+            search,
+            self.updater.metadata.keys(),
+            limit=max_results
+        )
+        d.addCallback(lambda r: self._update_cache(search, r))
+        return d
+
+
+class FuzzyMetadataIndex(FuzzyIndex):
+    def _process_search(self, search, max_results=MAX_RESULTS_CACHED, settings=DEFAULT_SETTINGS):
         d = threads.deferToThread(
             process.extract,
             search,
@@ -89,15 +72,6 @@ class FuzzyMetadataIndex(object):
         )
         d.addCallback(lambda r: self._update_cache(search, r))
         return d
-
-    def _update_cache(self, k, r):
-        if len(self.search_cache) > self.max_cache or k in self.results_cache:
-            del self.results_cache[self.search_cache.pop()]
-        self.search_cache.reverse()
-        self.search_cache.append(k)
-        self.search_cache.reverse()
-        self.results_cache.update({k: r})
-        return r
 
 
 class LighthouseSearch(object):
@@ -135,23 +109,23 @@ class LighthouseSearch(object):
             return sorted(results, key=lambda x: x[1], reverse=True)
 
         def _combine(results):
-            t = []
-            for s in results:
-                t += results[s]
-            r = []
-            for i in t:
-                check = [j for j in r if j[0] == i[0]]
-                if check:
-                    already_in_results = check[0]
+            raw_results = []
+            for r in results:
+                raw_results += results[r]
+            results_without_duplicates = []
+            # keep highest scoring unique search results
+            for name, score in raw_results:
+                if name in [r[0] for r in raw_results]:
+                    existing_val = next((r for r in raw_results if r[0] == name and score != score), False)
                 else:
-                    already_in_results = False
-                if not i[0] in FILTERED:
-                    if not already_in_results:
-                        r.append(i)
-                    elif i[1] > already_in_results[1]:
-                        r.remove(already_in_results)
-                        r.append(i)
-            return r
+                    existing_val = False
+                if name not in FILTERED:
+                    if not existing_val:
+                        results_without_duplicates.append((name, score))
+                    elif score > existing_val[1]:
+                        results_without_duplicates.remove(existing_val)
+                        results_without_duplicates.append((name, score))
+            return results_without_duplicates
 
         def _format(results):
             shortened = results[:min(MAX_RETURNED_RESULTS, len(results) - 1)]

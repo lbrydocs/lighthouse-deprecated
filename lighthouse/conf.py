@@ -5,4 +5,5 @@ DEFAULT_WEIGHTS = {'name': 1.5, 'title': 1.25, 'description': 1.0, 'author': 1.2
 MAX_RETURNED_RESULTS = 25
 CACHE_SIZE = 1000
 MAX_SD_TRIES = 1
+MAX_RESULTS_CACHED = 100
 FILTERED = ['socialengineering']
