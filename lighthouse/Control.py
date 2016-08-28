@@ -1,4 +1,4 @@
-from lighthouse.Server import LighthouseServer, LighthouseControllerServer
+from lighthouse.server.LighthouseServer import LighthouseControllerServer, LighthouseServer
 from twisted.web import server
 from twisted.internet import reactor
 from jsonrpc.proxy import JSONRPCProxy

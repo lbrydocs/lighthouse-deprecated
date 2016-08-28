@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import logging.handlers
 
 from twisted.internet import defer, reactor, threads
 from twisted.internet.task import LoopingCall
@@ -8,12 +9,9 @@ from jsonrpc.proxy import JSONRPCProxy
 from lbrynet.conf import API_CONNECTION_STRING, MIN_BLOB_DATA_PAYMENT_RATE
 from lbrynet.core.LBRYMetadata import Metadata, verify_name_characters
 from lbrynet.lbrynet_daemon.LBRYExchangeRateManager import ExchangeRateManager
-
-import logging.handlers
+from lighthouse.conf import MAX_SD_TRIES
 
 log = logging.getLogger()
-
-MAX_SD_TRIES = 1
 
 
 class MetadataUpdater(object):
@@ -36,7 +34,7 @@ class MetadataUpdater(object):
             self.sd_cache = r.get('sd_cache', {})
             self.sd_attempts = r.get('sd_attempts', {})
             self.bad_uris = r.get('bad_uris', [])
-            self.cost_and_availability = r.get('canda', {})
+            self.cost_and_availability = r.get('cost_and_availability', {})
         else:
             log.info("Rebuilding metadata cache")
             self.claimtrie = []
@@ -76,14 +74,11 @@ class MetadataUpdater(object):
     def _save_stream_descriptor(self, sd_hash):
         if self.sd_cache.get(sd_hash, False):
             return
-        log.info("Requesting %s" % sd_hash)
         self.sd_cache[sd_hash] = self.api.download_descriptor({'sd_hash': sd_hash})
         if not self.sd_cache[sd_hash]:
             self.sd_attempts[sd_hash] = self.sd_attempts.get(sd_hash, 0) + 1
             if self.sd_attempts[sd_hash] < MAX_SD_TRIES:
                 self.descriptors_to_download.append(sd_hash)
-            else:
-                log.info("%s failed too many times, giving up" % sd_hash)
 
     def _save_metadata(self, claim, metadata):
         try:
@@ -98,7 +93,6 @@ class MetadataUpdater(object):
             self.claimtrie.append(claim)
         sd_hash = m['sources']['lbry_sd_hash']
         if not self.sd_cache.get(sd_hash, False) and self.sd_attempts.get(sd_hash, 0) < MAX_SD_TRIES and sd_hash not in self.descriptors_to_download:
-            log.info("Adding %s to q" % sd_hash)
             self.descriptors_to_download.append(sd_hash)
 
         return self._cache_metadata()
@@ -135,7 +129,7 @@ class MetadataUpdater(object):
                 'bad_uris': self.bad_uris,
                 'sd_cache': self.sd_cache,
                 'sd_attempts': self.sd_attempts,
-                'canda': self.cost_and_availability
+                'cost_and_availability': self.cost_and_availability
         }
         f = open(self.cache_file, "w")
         f.write(json.dumps(r))
@@ -164,11 +158,15 @@ class MetadataUpdater(object):
         self.cost_and_availability[name] = {'cost': data_cost + fee, 'available': available, 'ts': time.time()}
 
     def start(self):
-        log.info("Starting updater")
+        log.info("Starting exchange rate manager")
         self.exchange_rate_manager.start()
+        log.info("Starting claim updater")
         self.claimtrie_updater.start(30)
+        log.info("Starting sd updater")
         self.sd_updater.start(30)
+        log.info("Starting cost updater")
         self.cost_updater.start(60)
+        log.info("started!")
 
     def stop(self):
         log.info("Stopping updater")
