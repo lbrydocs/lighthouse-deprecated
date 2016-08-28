@@ -99,33 +99,6 @@ class Lighthouse(jsonrpc.JSONRPC):
         self.running = False
         self.metadata_updater.stop()
 
-    # def _get_dict_for_return(self, name):
-    #     r = {
-    #             'name': name,
-    #             'value': self.metadata_updater.metadata[name],
-    #             'cost': self.metadata_updater.cost_and_availability[name]['cost'],
-    #             'available': self.metadata_updater.cost_and_availability[name]['available'],
-    #     }
-    #     return r
-    #
-    # def _process_search(self, search, keys):
-    #     log.info("Processing search: %s" % search)
-    #     results = []
-    #     for search_by in keys:
-    #         r = process.extract(search, [self.metadata_updater.metadata[m][search_by] for m in self.metadata_updater.metadata], limit=10)
-    #         r2 = [i[0] for i in r]
-    #         r3 = [self._get_dict_for_return(m) for m in self.metadata_updater.metadata if self.metadata_updater.metadata[m][search_by] in r2]
-    #         results += [next(i for i in r3 if i['value'][search_by] == n) for n in r2]
-    #
-    #     final_results = []
-    #     for result in results:
-    #         if result['value'] not in [v['value'] for v in final_results]:
-    #             final_results.append(result)
-    #         if len(final_results) >= MAX_RETURNED_RESULTS:
-    #             break
-    #
-    #     return final_results
-
     def jsonrpc_search(self, search, search_by=DEFAULT_SEARCH_KEYS):
         return self.search_engine.search(search)
 
