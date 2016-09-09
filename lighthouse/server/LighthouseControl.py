@@ -13,6 +13,9 @@ class LighthouseController(jsonrpc.JSONRPC):
     def jsonrpc_dump_sessions(self):
         return self.lighthouse.unique_clients
 
+    def jsonrpc_dump_metadata(self):
+        return self.lighthouse.metadata_updater.metadata
+
     def jsonrpc_dump_indexes(self):
         r = {}
         for i in self.lighthouse.search_engine.indexes:

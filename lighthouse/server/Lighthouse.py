@@ -7,9 +7,7 @@ from decimal import Decimal
 from twisted.internet import defer, reactor
 from twisted.web import server
 from txjsonrpc.web import jsonrpc
-from fuzzywuzzy import process
 from lighthouse.updater.MetadataUpdater import MetadataUpdater
-from lighthouse.conf import CACHE_SIZE, MAX_RETURNED_RESULTS, DEFAULT_SEARCH_KEYS
 from lighthouse.search.search import LighthouseSearch
 
 log = logging.getLogger()
@@ -99,7 +97,7 @@ class Lighthouse(jsonrpc.JSONRPC):
         self.running = False
         self.metadata_updater.stop()
 
-    def jsonrpc_search(self, search, search_by=DEFAULT_SEARCH_KEYS):
+    def jsonrpc_search(self, search):
         return self.search_engine.search(search)
 
     def jsonrpc_announce_sd(self, sd_hash):

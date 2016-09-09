@@ -3,7 +3,6 @@ from twisted.web import resource
 from lighthouse.server.Lighthouse import Lighthouse
 from lighthouse.server.LighthouseControl import LighthouseController
 
-
 log = logging.getLogger()
 
 

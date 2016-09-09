@@ -134,9 +134,29 @@ class LighthouseSearch(object):
                 final.append(self._get_dict_for_return(r[0]))
             return final
 
+        def _direct_match(search, results):
+            results_for_return = results
+            if search in self.updater.metadata:
+                # if the name isn't in the results, add it as the top result
+                if search not in [r[0] for r in results]:
+                    results_for_return.pop()
+                    results_for_return.reverse()
+                    results_for_return.append((search, 1000))
+                    results_for_return.reverse
+
+                # if the name is in the results but in the wrong position, move it to the front
+                wrong_position = next((r for r in results[1:] if r[0] == search), False)
+                if wrong_position:
+                    results_for_return.remove(wrong_position)
+                    results_for_return.reverse()
+                    results_for_return.append(wrong_position)
+                    results_for_return.reverse()
+            return results_for_return
+
         d = search_by(search, settings)
         d.addCallback(_apply_weights)
         d.addCallback(_combine)
         d.addCallback(_sort)
+        d.addCallback(lambda r: _direct_match(search, r))
         d.addCallback(_format)
         return d
