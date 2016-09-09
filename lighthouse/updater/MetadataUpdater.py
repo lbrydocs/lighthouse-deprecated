@@ -5,53 +5,22 @@ import base64
 import logging.handlers
 
 from twisted.enterprise import adbapi
-from twisted.internet import defer, reactor, threads
+from twisted.internet import defer, reactor
 from twisted.internet.task import LoopingCall
 from jsonrpc.proxy import JSONRPCProxy
 from lbrynet.conf import API_CONNECTION_STRING, MIN_BLOB_DATA_PAYMENT_RATE
 from lbrynet.metadata.LBRYMetadata import Metadata, verify_name_characters
 from lbrynet.lbrynet_daemon.LBRYExchangeRateManager import ExchangeRateManager
-from lighthouse.conf import MAX_SD_TRIES
+from lighthouse.conf import MAX_SD_TRIES, CACHE_DIR
 
 log = logging.getLogger()
-
-default_settings = {
-    'cache_dir': os.path.join(os.path.expanduser("~/"), '.lighthouse'),
-}
-
-
-def get_settings(path):
-    f = open(path, "r")
-    lines = f.readlines()
-    parsed_lines = [l.split('=') for l in lines]
-    d_for_return = {k: v for k, v in parsed_lines}
-    return d_for_return
-
-
-def save_settings(path, settings):
-    f = open(path, "w")
-    lines = ["%s=%s" % (k, v) for k, v in settings.iteritems()]
-    f.writelines(lines)
-    f.close()
-    return
 
 
 class MetadataUpdater(object):
     def __init__(self):
         reactor.addSystemEventTrigger('before', 'shutdown', self.stop)
         self.api = JSONRPCProxy.from_url(API_CONNECTION_STRING)
-        self.conf_file = os.path.join(os.path.expanduser("~/"), ".lighthouse.conf")
-        if os.path.isfile(self.conf_file):
-            log.info("Loading conf file")
-            settings = get_settings(self.conf_file)
-        else:
-            log.info("Wrote conf file")
-            settings = default_settings
-            save_settings(self.conf_file, settings)
-
-        self.cache_dir = settings['cache_dir']
-        if not os.path.isdir(self.cache_dir):
-            os.mkdir(self.cache_dir)
+        self.cache_dir = CACHE_DIR
         self.cache_file = os.path.join(self.cache_dir, "lighthouse.sqlite")
         self.cost_updater = LoopingCall(self._update_costs)
         self.exchange_rate_manager = ExchangeRateManager()
