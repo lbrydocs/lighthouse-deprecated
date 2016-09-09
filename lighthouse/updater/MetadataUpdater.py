@@ -57,7 +57,7 @@ class MetadataUpdater(object):
         self.exchange_rate_manager = ExchangeRateManager()
         self.name_refresher = LoopingCall(self._initialize_metadata)
         self.db = None
-
+        self._is_running = False
         self._claims_to_check = []
         self.claimtrie = {}
         self._last_time = time.time()
@@ -212,6 +212,10 @@ class MetadataUpdater(object):
             d = self._add_claims_for_height(cache_height + 1)
             d.addCallback(lambda _: reactor.callLater(0, self.catchup))
         else:
+            if not self._is_running:
+                self._is_running = True
+                self._start()
+
             d = defer.succeed(None)
             d.addCallback(lambda _: reactor.callLater(60, self.catchup))
 
@@ -308,17 +312,19 @@ class MetadataUpdater(object):
         d = self._get_cached_height()
         d.addCallback(self._catch_up_claims)
 
-    def start(self):
-        d = self._open_db()
-        d.addCallback(lambda _: self.load_claims())
-        d.addCallback(lambda _: self.catchup())
-        d.addCallback(lambda _: self.update_descriptors())
+    def _start(self):
+        d = self.update_descriptors()
         d.addCallback(lambda _: self.refresh_winning_name())
         d.addCallback(lambda _: self._initialize_metadata())
         d.addCallback(lambda _: self.exchange_rate_manager.start())
         d.addCallback(lambda _: self.cost_updater.start(60))
         d.addCallback(lambda _: self.name_refresher.start(300))
         d.addCallback(lambda _: log.info("started!"))
+
+    def start(self):
+        d = self._open_db()
+        d.addCallback(lambda _: self.load_claims())
+        d.addCallback(lambda _: self.catchup())
 
     def stop(self):
         log.info("Stopping updater")
