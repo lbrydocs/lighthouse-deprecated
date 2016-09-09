@@ -22,8 +22,8 @@ class LighthouseController(jsonrpc.JSONRPC):
             r.update({i: self.lighthouse.search_engine.indexes[i].results_cache})
         return r
 
-    def jsonrpc_dump_sd_blobs(self):
-        return self.lighthouse.metadata_updater.sd_cache
+    def jsonrpc_dump_size_cache(self):
+        return self.lighthouse.metadata_updater.size_cache
 
     def jsonrpc_dump_cost_and_available(self):
         return self.lighthouse.metadata_updater.cost_and_availability
