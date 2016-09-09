@@ -1,6 +1,7 @@
 import logging.handlers
 from twisted.internet import defer, threads
 from fuzzywuzzy import process
+from lbrynet.metadata.LBRYMetadata import Metadata
 from lighthouse.conf import CACHE_SIZE, MAX_RETURNED_RESULTS, DEFAULT_WEIGHTS
 from lighthouse.conf import METADATA_INDEXES, DEFAULT_SETTINGS, FILTERED, MAX_RESULTS_CACHED
 
@@ -81,9 +82,10 @@ class LighthouseSearch(object):
         self.indexes.update({'name': FuzzyNameIndex(self.updater)})
 
     def _get_dict_for_return(self, name):
+        meta = Metadata(self.updater.metadata[name], process_now=True)
         r = {
             'name': name,
-            'value': self.updater.metadata[name],
+            'value': meta,
             'cost': self.updater.cost_and_availability[name]['cost'],
             'available': self.updater.cost_and_availability[name]['available'],
         }

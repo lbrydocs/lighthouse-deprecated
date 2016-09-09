@@ -175,7 +175,7 @@ class MetadataUpdater(object):
 
         d = self.db.runQuery("select * from claims where txid=?", (txid,))
         d.addCallback(lambda r: r[0])
-        d.addCallback(lambda (c,nm,t,n): _add_metadata(c,nm,t,n))
+        d.addCallback(lambda (c, nm, t, n): _add_metadata(c, nm, t, n))
         return d
 
     def load_claims(self):
@@ -227,7 +227,11 @@ class MetadataUpdater(object):
             txid = c['txid']
             claim = self._claims[txid]
             if 'metadata' in claim:
-                self.metadata[name] = claim['metadata']
+                try:
+                    meta = Metadata(claim['metadata'], process_now=False)
+                    self.metadata[name] = meta
+                except AssertionError:
+                    log.info("Bad metadata for lbry://%s", name)
         return defer.succeed(None)
 
     def refresh_winning_name(self):
@@ -236,8 +240,11 @@ class MetadataUpdater(object):
             log.info("Checking winning claim for lbry://%s", name)
             current = self.api.get_claim_info({'name': name})
             if current:
-                self.metadata[name] = self._claims[current['txid']]['metadata']
-                self.claimtrie[name] = self._claims[current['txid']]
+                try:
+                    self.metadata[name] = self._claims[current['txid']]['metadata']
+                    self.claimtrie[name] = self._claims[current['txid']]
+                except KeyError:
+                    self._claims_to_check.append(name)
             reactor.callLater(1, self.refresh_winning_name)
         else:
             reactor.callLater(30, self.refresh_winning_name)
