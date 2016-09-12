@@ -10,7 +10,7 @@ import os
 DEFAULT_FORMAT = "%(asctime)s %(levelname)-8s %(name)s:%(lineno)d: %(message)s"
 DEFAULT_FORMATTER = logging.Formatter(DEFAULT_FORMAT)
 
-log = logging.getLogger()
+log = logging.getLogger(__name__)
 console_handler = logging.StreamHandler(sys.stdout)
 file_handler = logging.FileHandler(os.path.join(os.path.expanduser("~/"), "lighthouse.log"))
 console_handler.setFormatter(DEFAULT_FORMATTER)

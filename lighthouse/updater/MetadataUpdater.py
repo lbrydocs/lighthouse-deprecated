@@ -13,7 +13,7 @@ from lbrynet.metadata.LBRYMetadata import Metadata, verify_name_characters
 from lbrynet.lbrynet_daemon.LBRYExchangeRateManager import ExchangeRateManager
 from lighthouse.conf import MAX_SD_TRIES, CACHE_DIR
 
-log = logging.getLogger()
+log = logging.getLogger(__name__)
 
 
 class MetadataUpdater(object):

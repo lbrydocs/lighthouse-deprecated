@@ -10,7 +10,7 @@ from txjsonrpc.web import jsonrpc
 from lighthouse.updater.MetadataUpdater import MetadataUpdater
 from lighthouse.search.search import LighthouseSearch
 
-log = logging.getLogger()
+log = logging.getLogger(__name__)
 
 
 class Lighthouse(jsonrpc.JSONRPC):
