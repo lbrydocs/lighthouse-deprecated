@@ -2,7 +2,7 @@ import logging.handlers
 from twisted.internet import defer, threads
 from fuzzywuzzy import process
 from lbrynet.metadata.LBRYMetadata import Metadata
-from lighthouse.util import move_to_front, add_to_front
+from lighthouse.util import add_or_move_to_front
 from lighthouse.conf import CACHE_SIZE, MAX_RETURNED_RESULTS, DEFAULT_WEIGHTS
 from lighthouse.conf import METADATA_INDEXES, DEFAULT_SETTINGS, FILTERED, MAX_RESULTS_CACHED
 
@@ -142,9 +142,8 @@ class LighthouseSearch(object):
             results_for_return = results
             if search in self.updater.metadata:
                 # if the name isn't in the results, add it as the top result
-                results_for_return = add_to_front((search, 1000), results_for_return)
-                # if the name is in the results but in the wrong position, move it to the front
-                results_for_return = move_to_front((search, 1000), results_for_return)
+                # if it is in the results, make sure it's the top result
+                results_for_return = add_or_move_to_front(search, results_for_return)
             return results_for_return
 
         d = search_by(search, settings)
