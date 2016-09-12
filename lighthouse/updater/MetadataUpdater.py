@@ -183,7 +183,7 @@ class MetadataUpdater(object):
     def _catch_up_claims(self, cache_height):
         chain_height = self.api.get_block({'blockhash': self.api.get_best_blockhash()})['height']
         if chain_height > cache_height:
-            log.info("Catching up with blockchain")
+            log.debug("Catching up with blockchain")
             d = self._add_claims_for_height(cache_height + 1)
             d.addCallback(lambda _: reactor.callLater(1, self.catchup))
         else:
@@ -256,7 +256,7 @@ class MetadataUpdater(object):
         d.addCallback(lambda _: self.db.runQuery("insert into stream_size values (?, ?)", (sd_hash, total_bytes)))
 
     def _notify_bad_metadata(self, name, txid):
-        log.info("claim for lbry://%s does not conform to any specification", name)
+        log.debug("claim for lbry://%s does not conform to any specification", name)
         if txid not in self.bad_uris:
             self.bad_uris.append(txid)
         return defer.succeed(True)
