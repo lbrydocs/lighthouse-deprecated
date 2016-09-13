@@ -1,179 +1,324 @@
 import json
 import os
 import time
+import base64
 import logging.handlers
 
-from twisted.internet import defer, reactor, threads
+from twisted.enterprise import adbapi
+from twisted.internet import defer, reactor
 from twisted.internet.task import LoopingCall
 from jsonrpc.proxy import JSONRPCProxy
 from lbrynet.conf import API_CONNECTION_STRING, MIN_BLOB_DATA_PAYMENT_RATE
 from lbrynet.metadata.LBRYMetadata import Metadata, verify_name_characters
 from lbrynet.lbrynet_daemon.LBRYExchangeRateManager import ExchangeRateManager
-from lighthouse.conf import MAX_SD_TRIES
+from lighthouse.conf import MAX_SD_TRIES, CACHE_DIR
 
-log = logging.getLogger()
+log = logging.getLogger(__name__)
 
 
 class MetadataUpdater(object):
     def __init__(self):
         reactor.addSystemEventTrigger('before', 'shutdown', self.stop)
         self.api = JSONRPCProxy.from_url(API_CONNECTION_STRING)
-        self.cache_file = os.path.join(os.path.expanduser("~/"), "lighthouse_cache")
-        self.claimtrie_updater = LoopingCall(self._update_claimtrie)
-        self.sd_updater = LoopingCall(self._update_descriptors)
+        self.cache_dir = CACHE_DIR
+        self.cache_file = os.path.join(self.cache_dir, "lighthouse.sqlite")
         self.cost_updater = LoopingCall(self._update_costs)
         self.exchange_rate_manager = ExchangeRateManager()
-
-        if os.path.isfile(self.cache_file):
-            log.info("Loading cache")
-            f = open(self.cache_file, "r")
-            r = json.loads(f.read())
-            f.close()
-            self.claimtrie = r.get('claimtrie', [])
-            self.metadata = r.get('metadata', {})
-            self.sd_cache = r.get('sd_cache', {})
-            self.sd_attempts = r.get('sd_attempts', {})
-            self.bad_uris = r.get('bad_uris', [])
-            self.cost_and_availability = r.get('cost_and_availability', {})
-        else:
-            log.info("Rebuilding metadata cache")
-            self.claimtrie = []
-            self.metadata = {}
-            self.sd_cache = {}
-            self.sd_attempts = {}
-            self.bad_uris = []
-            self.cost_and_availability = {n: {'cost': 0.0, 'available': False} for n in self.metadata}
+        self.name_refresher = LoopingCall(self._initialize_metadata)
+        self.db = None
+        self._is_running = False
+        self._claims_to_check = []
+        self.claimtrie = {}
+        self._last_time = time.time()
         self.descriptors_to_download = []
-        for name in self.metadata:
-            sd_hash = self.metadata[name]['sources']['lbry_sd_hash']
-            if not self.sd_cache.get(sd_hash, False) and self.sd_attempts.get(sd_hash, 0) < MAX_SD_TRIES:
+        self._claims = {}
+        self.metadata = {}
+        self.size_cache = {}
+        self.sd_attempts = {}
+        self.stream_size = {}
+        self.bad_uris = []
+        self.cost_and_availability = {n: {'cost': 0.0, 'available': False} for n in self.metadata}
+
+    def _open_db(self):
+        log.info("open db")
+        self.db = adbapi.ConnectionPool('sqlite3', self.cache_file, check_same_thread=False)
+
+        def create_tables(transaction):
+            transaction.execute("create table if not exists blocks (" +
+                                "    block_height integer, " +
+                                "    block_hash text, " +
+                                "    claim_txid text)")
+            transaction.execute("create table if not exists claims (" +
+                                "    claimid text, " +
+                                "    name text, " +
+                                "    txid text," +
+                                "    n integer)")
+            transaction.execute("create table if not exists metadata (" +
+                                "    claimid text, " +
+                                "    txid text, " +
+                                "    value text)")
+            transaction.execute("create table if not exists stream_size (" +
+                                "    sd_hash text, " +
+                                "    total_bytes integer)")
+            transaction.execute("create table if not exists blob_attempts (" +
+                                "    hash text, " +
+                                "    num_tries integer)")
+
+        return self.db.runInteraction(create_tables)
+
+    def _get_cached_height(self):
+        d = self.db.runQuery("select max(block_height) from blocks")
+        d.addCallback(lambda r: r[0][0] if r[0][0] else 0)
+        return d
+
+    def _add_claim(self, block_hash, height, name, claim, txid):
+        d = self.db.runQuery("select * from blocks where claim_txid=?", (txid,))
+        d.addCallback(lambda r: self._update_claim_database(block_hash, height, name, claim, txid) if not r else True)
+        return d
+
+    def _update_claim_database(self, block_hash, height, name, claim, txid):
+        if 'supported claimId' in claim:
+            log.info("Skipping claim support %s for lbry://%s, claimid: %s", txid, name, claim['supported claimId'])
+            return defer.succeed(None)
+
+        claim_value = base64.b64encode(claim['value'])
+        nout = claim['nOut']
+        claim_id = claim['claimId']
+        try:
+            self._claims.update({txid: {'name': name, 'claim_id': claim_id, 'nout': nout, 'metadata': Metadata(json.loads(claim['value']), process_now=False)}})
+        except AssertionError:
+            self._claims.update({txid: {'name': name, 'claim_id': claim_id, 'nout': nout}})
+
+        log.info("Add claim for lbry://%s, id: %s, tx: %s", name, claim_id, txid)
+
+        d = self.db.runQuery("insert into blocks values (?, ?, ?)", (height, block_hash, txid))
+        d.addCallback(lambda _: self.db.runQuery("insert into claims values (?, ?, ?, ?)", (claim_id, name, txid, nout)))
+        d.addCallback(lambda _: self.db.runQuery("insert into metadata values (?, ?, ?)", (claim_id, txid, claim_value)))
+        return d
+
+    def _load_stream_size(self, sd_hash):
+        def _save(size):
+            if size:
+                log.debug("Load size for %s", sd_hash)
+                self.size_cache[sd_hash] = size
+            if not self.size_cache.get(sd_hash, False) and self.sd_attempts.get(sd_hash, 0) < MAX_SD_TRIES and sd_hash not in self.descriptors_to_download:
                 self.descriptors_to_download.append(sd_hash)
+            return defer.succeed(True)
 
-    def _filter_claimtrie(self):
-        claims = self.api.get_nametrie()
-        r = []
-        for claim in claims:
-            if claim['txid'] not in self.bad_uris:
+        d = self.db.runQuery("select total_bytes from stream_size where sd_hash=?", (sd_hash,))
+        d.addCallback(lambda r: False if not len(r) else r[0][0])
+        d.addCallback(_save)
+        return d
+
+    def _load_sd_attempts(self, sd_hash):
+        def _save(attempts):
+            if attempts:
+                log.debug("Loaded %i attempts for %s", attempts, sd_hash)
+                self.sd_attempts[sd_hash] = attempts
+            return defer.succeed(True)
+
+        d = self.db.runQuery("select num_tries from blob_attempts where hash=?", (sd_hash,))
+        d.addCallback(lambda r: False if not len(r) else r[0][0])
+        d.addCallback(_save)
+        return d
+
+    def _load_claim(self, tx):
+        txid = tx[0]
+
+        def _add_metadata(claim_id, name, txid, n):
+            d = self.db.runQuery("select * from metadata where txid=? and claimid=?", (txid, claim_id))
+            d.addCallback(lambda r: r[0][2])
+            d.addCallback(lambda m: _save(claim_id, name, txid, n, m))
+            return d
+
+        def _save(claim_id, name, tx, n, encoded_meta):
+            try:
+                decoded = json.loads(base64.b64decode(encoded_meta))
+                verify_name_characters(name)
+                meta = Metadata(decoded, process_now=False)
+                ver = meta.get('ver', '0.0.1')
+                log.debug("lbry://%s conforms to metadata version %s" % (name, ver))
+                self._claims.update({tx: {'name': name, 'claim_id': claim_id, 'nout': n, 'metadata': meta}})
+                sd_hash = meta['sources']['lbry_sd_hash']
+                d = self._load_sd_attempts(sd_hash)
+                d.addCallback(lambda _: self._load_stream_size(sd_hash))
+                return d
+            except:
+                self._claims.update({txid: {'name': name, 'claim_id': claim_id, 'nout': n}})
+                return self._notify_bad_metadata(name, txid)
+
+        d = self.db.runQuery("select * from claims where txid=?", (txid,))
+        d.addCallback(lambda r: r[0])
+        d.addCallback(lambda (c, nm, t, n): _add_metadata(c, nm, t, n))
+        return d
+
+    def load_claims(self):
+        log.info("Loading blocks")
+        d = self.db.runQuery("select claim_txid from blocks where claim_txid!=''")
+        d.addCallback(lambda r: defer.DeferredList([self._load_claim(tx) for tx in r]))
+        return d
+
+    def _add_claims_for_height(self, height):
+        to_add = []
+        block = self.api.get_block({'height': height})
+        transactions = block['tx']
+        block_hash = block['hash']
+        for tx in transactions:
+            claims = self.api.get_claims_for_tx({'txid': tx})
+            if claims:
+                for claim in claims:
+                    self._claims_to_check.append(claim['name'])
+                    to_add.append((claim['name'], claim, tx))
+
+        if height % 100 == 0:
+            bps = 100/float(time.time() - self._last_time)
+            self._last_time = time.time()
+            log.debug("Imported %i blocks, %f blocks/s", height, bps)
+
+        d = defer.DeferredList([self._add_claim(block_hash, height, name, claim, tx) for (name, claim, tx) in to_add])
+        d.addCallback(lambda _: self.db.runQuery("select * from blocks where block_height=?", (height,)))
+        d.addCallback(lambda r: self.db.runQuery("insert into blocks values (?, ?, ?)", (height, block_hash, "")) if not r else True)
+        return d
+
+    def _catch_up_claims(self, cache_height):
+        chain_height = self.api.get_block({'blockhash': self.api.get_best_blockhash()})['height']
+        if chain_height > cache_height:
+            log.debug("Catching up with blockchain")
+            d = self._add_claims_for_height(cache_height + 1)
+            d.addCallback(lambda _: reactor.callLater(1, self.catchup))
+        else:
+            if not self._is_running:
+                self._is_running = True
+                self._start()
+            d = defer.succeed(None)
+            d.addCallback(lambda _: reactor.callLater(60, self.catchup))
+
+    def _initialize_metadata(self):
+        log.info("initializing metadata")
+        nametrie = self.api.get_nametrie()
+        for c in nametrie:
+            name = c['name']
+            txid = c['txid']
+            claim = self._claims.get(txid, {})
+            if 'metadata' in claim:
                 try:
-                    verify_name_characters(claim['name'])
-                    r.append(claim)
+                    meta = Metadata(claim['metadata'], process_now=False)
+                    self.metadata[name] = meta
                 except AssertionError:
-                    self.bad_uris.append(claim['txid'])
-                    log.info("Bad name for claim %s" % claim['txid'])
-        return r
+                    log.info("Bad metadata for lbry://%s", name)
+            else:
+                log.debug("Missing metadata for lbry://%s", name)
 
-    def _update_claimtrie(self):
-        claimtrie = self._filter_claimtrie()
-        if claimtrie != self.claimtrie:
-            for claim in claimtrie:
-                if claim['name'] not in self.metadata:
-                    self._update_metadata(claim)
-                elif claim['txid'] != self.metadata[claim['name']]['txid']:
-                    self._update_metadata(claim)
+    def refresh_winning_name(self):
+        def _delayed_add(name):
+            log.info("Checking lbry://%s", name)
+            self._claims_to_check.append(name)
 
-    def _save_stream_descriptor(self, sd_hash):
-        if self.sd_cache.get(sd_hash, False):
+        if len(self._claims_to_check):
+            name = self._claims_to_check.pop()
+            log.info("Checking winning claim for lbry://%s", name)
+            current = self.api.get_claim_info({'name': name})
+            if current:
+                try:
+                    self.metadata[name] = self._claims[current['txid']]['metadata']
+                    self.claimtrie[name] = self._claims[current['txid']]
+                    log.info("Updated lbry://%s", name)
+                except KeyError:
+                    reactor.callLater(30, _delayed_add, name)
+            reactor.callLater(1, self.refresh_winning_name)
+        else:
+            reactor.callLater(30, self.refresh_winning_name)
+
+    def _add_sd_attempt(self, sd_hash, n):
+        d = self.db.runQuery("delete from blob_attempts where hash=?", (sd_hash,))
+        d.addCallback(lambda _: self.db.runQuery("insert into blob_attempts values (?, ?)", (sd_hash, n)))
+
+    def _get_stream_descriptor(self, sd_hash):
+        log.info("trying to get sd %s", sd_hash)
+        if self.stream_size.get(sd_hash, False):
             return
-        self.sd_cache[sd_hash] = self.api.download_descriptor({'sd_hash': sd_hash})
-        if not self.sd_cache[sd_hash]:
+        sd = self.api.download_descriptor({'sd_hash': sd_hash})
+        if not sd:
             self.sd_attempts[sd_hash] = self.sd_attempts.get(sd_hash, 0) + 1
             if self.sd_attempts[sd_hash] < MAX_SD_TRIES:
                 self.descriptors_to_download.append(sd_hash)
+            self._add_sd_attempt(sd_hash, self.sd_attempts[sd_hash])
 
-    def _save_metadata(self, claim, metadata):
-        try:
-            m = Metadata(metadata)
-        except:
-            return self._notify_bad_metadata(claim)
-        ver = m.get('ver', '0.0.1')
-        log.info("lbry://%s conforms to metadata version %s" % (claim['name'], ver))
-        self.metadata[claim['name']] = m
-        self.metadata[claim['name']]['txid'] = claim['txid']
-        if claim not in self.claimtrie:
-            self.claimtrie.append(claim)
-        sd_hash = m['sources']['lbry_sd_hash']
-        if not self.sd_cache.get(sd_hash, False) and self.sd_attempts.get(sd_hash, 0) < MAX_SD_TRIES and sd_hash not in self.descriptors_to_download:
-            self.descriptors_to_download.append(sd_hash)
-
-        return self._cache_metadata()
-
-    def _notify_bad_metadata(self, claim):
-        log.info("lbry://%s does not conform to any specification" % str(claim['name']))
-        if claim['txid'] not in self.bad_uris:
-            self.bad_uris.append(claim['txid'])
-        return self._cache_metadata()
-
-    def _update_metadata(self, claim):
-        d = defer.succeed(None)
-        d.addCallback(lambda _: self.api.get_claims_for_tx({'txid': claim['txid']}))
-        d.addCallback(lambda claims: json.loads(claims[0]['value']))
-        d.addCallbacks(lambda metadata: self._save_metadata(claim, metadata),
-                       lambda _: self._notify_bad_metadata(claim))
-        return d
-
-    def _update_descriptors(self):
-        sds_to_get = []
-        while self.descriptors_to_download:
-            sds_to_get.append(self.descriptors_to_download.pop())
-        d = defer.DeferredList([threads.deferToThread(self._save_stream_descriptor, sd_hash) for sd_hash in sds_to_get])
-        d.addCallback(lambda _: self._cache_metadata())
-
-    def _update_costs(self):
-        d = defer.DeferredList([threads.deferToThread(self._get_cost, n) for n in self.metadata])
-        d.addCallback(lambda _: self._cache_metadata())
-
-    def _cache_metadata(self):
-        r = {
-                'metadata': self.metadata,
-                'claimtrie': self.claimtrie,
-                'bad_uris': self.bad_uris,
-                'sd_cache': self.sd_cache,
-                'sd_attempts': self.sd_attempts,
-                'cost_and_availability': self.cost_and_availability
-        }
-        f = open(self.cache_file, "w")
-        f.write(json.dumps(r))
-        f.close()
+        else:
+            stream_size = sum([blob['length'] for blob in sd['blobs']])
+            self._save_stream_size(sd_hash, stream_size)
         return defer.succeed(None)
 
+    def _save_stream_size(self, sd_hash, total_bytes):
+        log.info("Saving size info for %s", sd_hash)
+        self.stream_size.update({sd_hash: total_bytes})
+        d = self.db.runQuery("delete from stream_size where sd_hash=?", (sd_hash,))
+        d.addCallback(lambda _: self.db.runQuery("insert into stream_size values (?, ?)", (sd_hash, total_bytes)))
+
+    def _notify_bad_metadata(self, name, txid):
+        log.debug("claim for lbry://%s does not conform to any specification", name)
+        if txid not in self.bad_uris:
+            self.bad_uris.append(txid)
+        return defer.succeed(True)
+
+    def update_descriptors(self):
+        if len(self.descriptors_to_download):
+            sd_hash = self.descriptors_to_download.pop()
+            d = self._get_stream_descriptor(sd_hash)
+            d.addCallback(lambda _: reactor.callLater(1, self.update_descriptors))
+        else:
+            reactor.callLater(30, self.update_descriptors)
+
+    def _update_costs(self):
+        d = defer.DeferredList([self._get_cost(n) for n in self.metadata], consumeErrors=True)
+
     def _get_cost(self, name):
-        sd = self.sd_cache.get(self.metadata[name]['sources']['lbry_sd_hash'], None)
+        size = self.size_cache.get(self.metadata[name]['sources']['lbry_sd_hash'], None)
 
         if self.metadata[name].get('fee', False):
             fee = self.exchange_rate_manager.to_lbc(self.metadata[name]['fee']).amount
         else:
             fee = 0.0
 
-        if sd:
+        if size:
             if isinstance(MIN_BLOB_DATA_PAYMENT_RATE, float):
                 min_data_rate = {'LBC': {'amount': MIN_BLOB_DATA_PAYMENT_RATE, 'address': ''}}
             else:
                 min_data_rate = MIN_BLOB_DATA_PAYMENT_RATE
-            stream_size = sum([blob['length'] for blob in sd['blobs']]) / 1000000.0
+            stream_size = size / 1000000.0
             data_cost = self.exchange_rate_manager.to_lbc(min_data_rate).amount * stream_size
             available = True
         else:
             data_cost = 0.0
             available = False
         self.cost_and_availability[name] = {'cost': data_cost + fee, 'available': available, 'ts': time.time()}
+        return defer.succeed(None)
+
+    def catchup(self):
+        d = self._get_cached_height()
+        d.addCallback(self._catch_up_claims)
+        return d
+
+    def _start(self):
+        self.update_descriptors()
+        self._initialize_metadata()
+        self.refresh_winning_name()
+        self.exchange_rate_manager.start()
+        self.cost_updater.start(60)
+        log.info("*********************")
+        log.info("Loaded %i names", len(self.metadata))
+        log.info("Loaded %i claims", len(self._claims))
+        log.info("Started!")
+        log.info("*********************")
 
     def start(self):
-        log.info("Starting exchange rate manager")
-        self.exchange_rate_manager.start()
-        log.info("Starting claim updater")
-        self.claimtrie_updater.start(30)
-        log.info("Starting sd updater")
-        self.sd_updater.start(30)
-        log.info("Starting cost updater")
-        self.cost_updater.start(60)
-        log.info("started!")
+        d = self._open_db()
+        d.addCallback(lambda _: self.load_claims())
+        d.addCallback(lambda _: self.catchup())
 
     def stop(self):
+        log.info("*********************")
         log.info("Stopping updater")
-        if self.claimtrie_updater.running:
-            self.claimtrie_updater.stop()
-        if self.sd_updater.running:
-            self.sd_updater.stop()
         if self.cost_updater.running:
             self.cost_updater.stop()
         self.exchange_rate_manager.stop()

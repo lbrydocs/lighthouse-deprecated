@@ -8,7 +8,7 @@ console_scripts = ['start-lighthouse = lighthouse.Control:start',
                    'silenceinthelbry = lighthouse.Control:stop',
                    'lighthouse-cli = lighthouse.Control:cli']
 
-requires = ['lbrynet', 'fuzzywuzzy', 'python-Levenshtein']
+requires = ['lbrynet', 'fuzzywuzzy', 'python-Levenshtein', 'PyYAML']
 
 setup(name='lighthouse',
       description='Basic search engine for publications on the lbrycrd blockchain',

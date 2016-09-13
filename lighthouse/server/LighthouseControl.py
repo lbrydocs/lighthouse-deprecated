@@ -2,7 +2,7 @@ import logging.handlers
 from twisted.internet import reactor
 from txjsonrpc.web import jsonrpc
 
-log = logging.getLogger()
+log = logging.getLogger(__name__)
 
 
 class LighthouseController(jsonrpc.JSONRPC):
@@ -13,14 +13,17 @@ class LighthouseController(jsonrpc.JSONRPC):
     def jsonrpc_dump_sessions(self):
         return self.lighthouse.unique_clients
 
+    def jsonrpc_dump_metadata(self):
+        return self.lighthouse.metadata_updater.metadata
+
     def jsonrpc_dump_indexes(self):
         r = {}
         for i in self.lighthouse.search_engine.indexes:
             r.update({i: self.lighthouse.search_engine.indexes[i].results_cache})
         return r
 
-    def jsonrpc_dump_sd_blobs(self):
-        return self.lighthouse.metadata_updater.sd_cache
+    def jsonrpc_dump_size_cache(self):
+        return self.lighthouse.metadata_updater.size_cache
 
     def jsonrpc_dump_cost_and_available(self):
         return self.lighthouse.metadata_updater.cost_and_availability

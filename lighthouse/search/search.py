@@ -1,10 +1,12 @@
 import logging.handlers
 from twisted.internet import defer, threads
 from fuzzywuzzy import process
+from lbrynet.metadata.LBRYMetadata import Metadata
+from lighthouse.util import add_or_move_to_front
 from lighthouse.conf import CACHE_SIZE, MAX_RETURNED_RESULTS, DEFAULT_WEIGHTS
 from lighthouse.conf import METADATA_INDEXES, DEFAULT_SETTINGS, FILTERED, MAX_RESULTS_CACHED
 
-log = logging.getLogger()
+log = logging.getLogger(__name__)
 
 
 class FuzzyIndex(object):
@@ -81,9 +83,10 @@ class LighthouseSearch(object):
         self.indexes.update({'name': FuzzyNameIndex(self.updater)})
 
     def _get_dict_for_return(self, name):
+        meta = Metadata(self.updater.metadata[name], process_now=True)
         r = {
             'name': name,
-            'value': self.updater.metadata[name],
+            'value': meta,
             'cost': self.updater.cost_and_availability[name]['cost'],
             'available': self.updater.cost_and_availability[name]['available'],
         }
@@ -119,6 +122,7 @@ class LighthouseSearch(object):
                     existing_val = next((r for r in raw_results if r[0] == name and score != score), False)
                 else:
                     existing_val = False
+
                 if name not in FILTERED:
                     if not existing_val:
                         results_without_duplicates.append((name, score))
@@ -134,9 +138,18 @@ class LighthouseSearch(object):
                 final.append(self._get_dict_for_return(r[0]))
             return final
 
+        def _direct_match(search, results):
+            results_for_return = results
+            if search in self.updater.metadata:
+                # if the name isn't in the results, add it as the top result
+                # if it is in the results, make sure it's the top result
+                results_for_return = add_or_move_to_front(search, results_for_return)
+            return results_for_return
+
         d = search_by(search, settings)
         d.addCallback(_apply_weights)
         d.addCallback(_combine)
         d.addCallback(_sort)
+        d.addCallback(lambda r: _direct_match(search, r))
         d.addCallback(_format)
         return d
