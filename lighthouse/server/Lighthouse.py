@@ -29,7 +29,10 @@ class Lighthouse(jsonrpc.JSONRPC):
         request.content.seek(0, 0)
         # Unmarshal the JSON-RPC data.
         content = request.content.read()
-        parsed = jsonrpclib.loads(content)
+        try:
+            parsed = jsonrpclib.loads(content)
+        except ValueError:
+            return server.failure
         functionPath = parsed.get("method")
         if functionPath not in ["search", "announce_sd", "check_available"]:
             return server.failure
