@@ -6,6 +6,7 @@ import logging.handlers
 import sys
 import os
 
+RPC_PORT = 50004
 
 DEFAULT_FORMAT = "%(asctime)s %(levelname)-8s %(name)s:%(lineno)d: %(message)s"
 DEFAULT_FORMATTER = logging.Formatter(DEFAULT_FORMAT)
@@ -22,9 +23,8 @@ logging.getLogger("lbrynet").setLevel(logging.WARNING)
 logging.getLogger("requests").setLevel(logging.WARNING)
 
 
-
 def cli():
-    ecu = JSONRPCProxy.from_url("http://localhost:50004")
+    ecu = JSONRPCProxy.from_url("http://localhost:" + RPC_PORT)
     try:
         s = ecu.is_running()
     except:
@@ -46,12 +46,12 @@ def start():
     e = server.Site(ecu.root)
 
     reactor.listenTCP(50005, s)
-    reactor.listenTCP(50004, e, interface="localhost")
+    reactor.listenTCP(RPC_PORT, e, interface="localhost")
     reactor.run()
 
 
 def stop():
-    ecu = JSONRPCProxy.from_url("http://localhost:50004")
+    ecu = JSONRPCProxy.from_url("http://localhost:" + RPC_PORT)
     try:
         r = ecu.is_running()
         ecu.stop()
