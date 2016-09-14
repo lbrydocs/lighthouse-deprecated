@@ -24,7 +24,8 @@ class MetadataUpdater(object):
         self.cache_file = os.path.join(self.cache_dir, "lighthouse.sqlite")
         self.cost_updater = LoopingCall(self._update_costs)
         self.exchange_rate_manager = ExchangeRateManager()
-        self.name_refresher = LoopingCall(self._initialize_metadata)
+        self.show_status = LoopingCall(self._display_catchup_status)
+        self.name_checker = LoopingCall(self._initialize_metadata)
         self.db = None
         self._is_running = False
         self._claims_to_check = []
@@ -36,8 +37,15 @@ class MetadataUpdater(object):
         self.size_cache = {}
         self.sd_attempts = {}
         self.stream_size = {}
+        self.non_complying_claims = []
         self.bad_uris = []
+        self._chain_height = 0
+        self._blocks_to_go = False
         self.cost_and_availability = {n: {'cost': 0.0, 'available': False} for n in self.metadata}
+
+    def _display_catchup_status(self):
+        if self._blocks_to_go:
+            log.info("%i blocks to go", self._blocks_to_go)
 
     def _open_db(self):
         log.info("open db")
@@ -86,7 +94,11 @@ class MetadataUpdater(object):
         claim_id = claim['claimId']
         try:
             self._claims.update({txid: {'name': name, 'claim_id': claim_id, 'nout': nout, 'metadata': Metadata(json.loads(claim['value']), process_now=False)}})
+            if claim_id in self.non_complying_claims:
+                self.non_complying_claims.remove(claim_id)
         except AssertionError:
+            if claim_id not in self.non_complying_claims:
+                self.non_complying_claims.append(claim_id)
             self._claims.update({txid: {'name': name, 'claim_id': claim_id, 'nout': nout}})
 
         log.info("Add claim for lbry://%s, id: %s, tx: %s", name, claim_id, txid)
@@ -140,10 +152,15 @@ class MetadataUpdater(object):
                 log.debug("lbry://%s conforms to metadata version %s" % (name, ver))
                 self._claims.update({tx: {'name': name, 'claim_id': claim_id, 'nout': n, 'metadata': meta}})
                 sd_hash = meta['sources']['lbry_sd_hash']
+                self._check_name_at_height(self._chain_height, name)
+                if claim_id in self.non_complying_claims:
+                    self.non_complying_claims.remove(claim_id)
                 d = self._load_sd_attempts(sd_hash)
                 d.addCallback(lambda _: self._load_stream_size(sd_hash))
                 return d
             except:
+                if claim_id not in self.non_complying_claims:
+                    self.non_complying_claims.append(claim_id)
                 self._claims.update({txid: {'name': name, 'claim_id': claim_id, 'nout': n}})
                 return self._notify_bad_metadata(name, txid)
 
@@ -167,8 +184,14 @@ class MetadataUpdater(object):
             claims = self.api.get_claims_for_tx({'txid': tx})
             if claims:
                 for claim in claims:
-                    self._claims_to_check.append(claim['name'])
-                    to_add.append((claim['name'], claim, tx))
+                    if claim['in claim trie']:
+                        next_height = next(cl for cl in self.api.get_claims_for_name({'name': claim['name']})['claims']
+                                           if cl['claimId'] == claim['claimId'])['nValidAtHeight']
+                        log.info("%s, %i", claim['name'], next_height)
+                        self._claims_to_check.append(claim['name'])
+                        to_add.append((claim['name'], claim, tx))
+                        self._check_name_at_height(self._chain_height + 1, claim['name'])
+                        self._check_name_at_height(next_height, claim['name'])
 
         if height % 100 == 0:
             bps = 100/float(time.time() - self._last_time)
@@ -182,11 +205,19 @@ class MetadataUpdater(object):
 
     def _catch_up_claims(self, cache_height):
         chain_height = self.api.get_block({'blockhash': self.api.get_best_blockhash()})['height']
+        self._chain_height = chain_height
         if chain_height > cache_height:
             log.debug("Catching up with blockchain")
+            self._blocks_to_go = chain_height - cache_height
+            if not self.show_status.running:
+                self.show_status.start(30)
             d = self._add_claims_for_height(cache_height + 1)
-            d.addCallback(lambda _: reactor.callLater(1, self.catchup))
+            d.addCallback(lambda _: reactor.callLater(0, self.catchup))
         else:
+            log.info("Up to date with blockchain")
+            self._blocks_to_go = False
+            if self.show_status.running:
+                self.show_status.stop()
             if not self._is_running:
                 self._is_running = True
                 self._start()
@@ -211,21 +242,30 @@ class MetadataUpdater(object):
 
     def refresh_winning_name(self):
         def _delayed_add(name):
-            log.info("Checking lbry://%s", name)
+            log.debug("Checking lbry://%s", name)
             self._claims_to_check.append(name)
 
         if len(self._claims_to_check):
             name = self._claims_to_check.pop()
-            log.info("Checking winning claim for lbry://%s", name)
-            current = self.api.get_claim_info({'name': name})
-            if current:
+            log.debug("Checking winning claim for lbry://%s", name)
+            claims = self.api.get_claims_for_name({'name': name})
+            if len(claims['claims']):
+                current = claims['claims'][0]
                 try:
                     self.metadata[name] = self._claims[current['txid']]['metadata']
                     self.claimtrie[name] = self._claims[current['txid']]
+                    if current['claimId'] in self.non_complying_claims:
+                        self.non_complying_claims.remove(current['claimId'])
                     log.info("Updated lbry://%s", name)
                 except KeyError:
-                    reactor.callLater(30, _delayed_add, name)
-            reactor.callLater(1, self.refresh_winning_name)
+                    if current['claimId'] not in self.non_complying_claims:
+                        self.non_complying_claims.append(current['claimId'])
+                        log.warning("Missing metadata for lbry://%s", name)
+                        reactor.callLater(30, _delayed_add, name)
+                    else:
+                        pass
+
+            reactor.callLater(0, self.refresh_winning_name)
         else:
             reactor.callLater(30, self.refresh_winning_name)
 
@@ -299,21 +339,36 @@ class MetadataUpdater(object):
         d.addCallback(self._catch_up_claims)
         return d
 
+    def _on_block_height(self, height, f, *args):
+        if height >= self._chain_height:
+            reactor.callLater(0, f, *args)
+        else:
+            reactor.callLater(30, self._on_block_height, height, f, *args)
+
+    def _check_name_at_height(self, height, name):
+        def _check_name(n):
+            if n not in self._claims_to_check:
+                self._claims_to_check.append(n)
+
+        self._on_block_height(height, _check_name, name)
+
     def _start(self):
         self.update_descriptors()
         self._initialize_metadata()
-        self.refresh_winning_name()
-        self.exchange_rate_manager.start()
-        self.cost_updater.start(60)
         log.info("*********************")
         log.info("Loaded %i names", len(self.metadata))
         log.info("Loaded %i claims", len(self._claims))
         log.info("Started!")
         log.info("*********************")
+        self.refresh_winning_name()
+        self.exchange_rate_manager.start()
+        self.cost_updater.start(60)
+        self.name_checker.start(1800, now=False)
 
     def start(self):
         d = self._open_db()
         d.addCallback(lambda _: self.load_claims())
+        d.addCallback(lambda _: log.info("Catching up with the blockchain"))
         d.addCallback(lambda _: self.catchup())
 
     def stop(self):
@@ -321,4 +376,8 @@ class MetadataUpdater(object):
         log.info("Stopping updater")
         if self.cost_updater.running:
             self.cost_updater.stop()
+        if self.show_status.running:
+            self.show_status.stop()
+        if self.name_checker.running:
+            self.name_checker.stop()
         self.exchange_rate_manager.stop()
