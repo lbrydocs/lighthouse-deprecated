@@ -146,6 +146,9 @@ class LighthouseSearch(object):
                 results_for_return = add_or_move_to_front(search, results_for_return)
             return results_for_return
 
+        # lcase search as to by default weigh lower-case names higher than names with odd capitalizations
+        search = search.lower()
+
         d = search_by(search, settings)
         d.addCallback(_apply_weights)
         d.addCallback(_combine)
