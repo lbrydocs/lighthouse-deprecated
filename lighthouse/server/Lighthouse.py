@@ -104,7 +104,7 @@ class Lighthouse(jsonrpc.JSONRPC):
         return self.search_engine.search(search)
 
     def jsonrpc_announce_sd(self, sd_hash):
-        sd = self.metadata_updater.sd_cache.get(sd_hash, False)
+        sd = self.metadata_updater.size_cache.get(sd_hash, False)
         if sd:
             return "Already announced"
         self.metadata_updater.sd_attempts[sd_hash] = 0
@@ -112,7 +112,7 @@ class Lighthouse(jsonrpc.JSONRPC):
         return "Pending"
 
     def jsonrpc_check_available(self, sd_hash):
-        if self.metadata_updater.sd_cache.get(sd_hash, False):
+        if self.metadata_updater.size_cache.get(sd_hash, False):
             return True
         else:
             return False
