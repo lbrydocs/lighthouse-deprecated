@@ -268,8 +268,7 @@ class MetadataUpdater(object):
             self.non_complying_claims.remove(claim_id)
         log.info("Updated lbry://%s", name)
 
-    def _handle_bad_new_claim(self, name, claim):
-        claim_id = claim['claimId']
+    def _handle_bad_new_claim(self, name, claim_id):
         if claim_id not in self.non_complying_claims:
             self.non_complying_claims.append(claim_id)
             log.warning("Missing metadata for lbry://%s", name)
@@ -292,7 +291,7 @@ class MetadataUpdater(object):
                 try:
                     self._update_winning_name(name, current)
                 except KeyError:
-                    self._handle_bad_new_claim(name, current)
+                    self._handle_bad_new_claim(name, current['claimId'])
             reactor.callLater(0, self.refresh_winning_name)
 
     def _add_sd_attempt(self, sd_hash, n):
