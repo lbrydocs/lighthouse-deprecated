@@ -93,10 +93,22 @@ class MetadataUpdater(object):
         nout = claim['nOut']
         claim_id = claim['claimId']
         try:
-            self._claims.update({txid: {'name': name, 'claim_id': claim_id, 'nout': nout, 'metadata': Metadata(json.loads(claim['value']), process_now=False)}})
+            claim_info = {
+                'name': name,
+                'claim_id': claim_id,
+                'nout': nout,
+                'metadata': Metadata(json.loads(claim['value']), process_now=False)
+            }
+            self._claims.update({txid: claim_info})
             if claim_id in self.non_complying_claims:
                 self.non_complying_claims.remove(claim_id)
+        except ValueError:
+            log.info("Claim %s has invalid metadata json", claim_id)
+            if claim_id not in self.non_complying_claims:
+                self.non_complying_claims.append(claim_id)
+            self._claims.update({txid: {'name': name, 'claim_id': claim_id, 'nout': nout}})
         except AssertionError:
+            log.info("Claim %s has non conforming metadata", claim_id)
             if claim_id not in self.non_complying_claims:
                 self.non_complying_claims.append(claim_id)
             self._claims.update({txid: {'name': name, 'claim_id': claim_id, 'nout': nout}})
@@ -245,6 +257,8 @@ class MetadataUpdater(object):
                     log.info("Bad metadata for lbry://%s", name)
             else:
                 log.debug("Missing metadata for lbry://%s", name)
+                if 'claim_id' in claim:
+                    self._handle_bad_new_claim(name, claim['claim_id'])
 
     def _update_winning_name(self, name, claim):
         claim_id = claim['claimId']
@@ -271,7 +285,7 @@ class MetadataUpdater(object):
             reactor.callLater(30, self.refresh_winning_name)
         else:
             name = self._claims_to_check.pop()
-            log.debug("Checking winning claim for lbry://%s", name)
+            log.info("Checking winning claim for lbry://%s", name)
             claims = self.api.get_claims_for_name({'name': name})
             if claims['claims']:
                 current = claims['claims'][0]
