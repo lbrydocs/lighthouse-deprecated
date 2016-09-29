@@ -175,6 +175,13 @@ class MetadataUpdater(object):
         d.addCallback(lambda r: defer.DeferredList([self._load_claim(tx) for tx in r]))
         return d
 
+    def _get_valid_at_height(self, name, claim_id):
+        claims = self.api.get_claims_for_name({'name': name})['claims']
+        for claim in claims:
+            if claim['claimId'] == claim_id:
+                return claim['nValidAtHeight']
+        return None
+
     def _add_claims_for_height(self, height):
         to_add = []
         block = self.api.get_block({'height': height})
@@ -185,8 +192,7 @@ class MetadataUpdater(object):
             if claims:
                 for claim in claims:
                     if claim['in claim trie']:
-                        next_height = next(cl for cl in self.api.get_claims_for_name({'name': claim['name']})['claims']
-                                           if cl['claimId'] == claim['claimId'])['nValidAtHeight']
+                        next_height = self._get_valid_at_height(claim['name'], claim['claimId'])
                         log.info("%s, %i", claim['name'], next_height)
                         self._claims_to_check.append(claim['name'])
                         to_add.append((claim['name'], claim, tx))
@@ -240,34 +246,40 @@ class MetadataUpdater(object):
             else:
                 log.debug("Missing metadata for lbry://%s", name)
 
-    def refresh_winning_name(self):
-        def _delayed_add(name):
-            log.debug("Checking lbry://%s", name)
-            self._claims_to_check.append(name)
+    def _update_winning_name(self, name, claim):
+        claim_id = claim['claimId']
+        self.metadata[name] = self._claims[claim['txid']]['metadata']
+        self.claimtrie[name] = self._claims[claim['txid']]
+        if claim_id in self.non_complying_claims:
+            self.non_complying_claims.remove(claim_id)
+        log.info("Updated lbry://%s", name)
 
-        if len(self._claims_to_check):
+    def _handle_bad_new_claim(self, name, claim):
+        claim_id = claim['claimId']
+        if claim_id not in self.non_complying_claims:
+            self.non_complying_claims.append(claim_id)
+            log.warning("Missing metadata for lbry://%s", name)
+            self._delayed_check_claim(name)
+
+    def refresh_winning_name(self):
+        """
+        if there are no claims left to check, retry in 30 seconds
+        if there are claims to check, update the next one with no delay
+        """
+
+        if not self._claims_to_check:
+            reactor.callLater(30, self.refresh_winning_name)
+        else:
             name = self._claims_to_check.pop()
             log.debug("Checking winning claim for lbry://%s", name)
             claims = self.api.get_claims_for_name({'name': name})
-            if len(claims['claims']):
+            if claims['claims']:
                 current = claims['claims'][0]
                 try:
-                    self.metadata[name] = self._claims[current['txid']]['metadata']
-                    self.claimtrie[name] = self._claims[current['txid']]
-                    if current['claimId'] in self.non_complying_claims:
-                        self.non_complying_claims.remove(current['claimId'])
-                    log.info("Updated lbry://%s", name)
+                    self._update_winning_name(name, current)
                 except KeyError:
-                    if current['claimId'] not in self.non_complying_claims:
-                        self.non_complying_claims.append(current['claimId'])
-                        log.warning("Missing metadata for lbry://%s", name)
-                        reactor.callLater(30, _delayed_add, name)
-                    else:
-                        pass
-
+                    self._handle_bad_new_claim(name, current)
             reactor.callLater(0, self.refresh_winning_name)
-        else:
-            reactor.callLater(30, self.refresh_winning_name)
 
     def _add_sd_attempt(self, sd_hash, n):
         d = self.db.runQuery("delete from blob_attempts where hash=?", (sd_hash,))
@@ -339,16 +351,22 @@ class MetadataUpdater(object):
         d.addCallback(self._catch_up_claims)
         return d
 
-    def _on_block_height(self, height, f, *args):
+    def _on_block_height(self, height, fn, *args):
         if height >= self._chain_height:
-            reactor.callLater(0, f, *args)
+            reactor.callLater(0, fn, *args)
         else:
-            reactor.callLater(30, self._on_block_height, height, f, *args)
+            reactor.callLater(30, self._on_block_height, height, fn, *args)
+
+    def _delayed_check_claim(self, name, delay=30):
+        def _do_claim_check(_name):
+            log.debug("Checking lbry://%s", _name)
+            self._claims_to_check.append(_name)
+        reactor.callLater(delay, _do_claim_check, name)
 
     def _check_name_at_height(self, height, name):
-        def _check_name(n):
-            if n not in self._claims_to_check:
-                self._claims_to_check.append(n)
+        def _check_name(_name):
+            if _name not in self._claims_to_check:
+                self._claims_to_check.append(_name)
 
         self._on_block_height(height, _check_name, name)
 
@@ -374,10 +392,12 @@ class MetadataUpdater(object):
     def stop(self):
         log.info("*********************")
         log.info("Stopping updater")
-        if self.cost_updater.running:
-            self.cost_updater.stop()
-        if self.show_status.running:
-            self.show_status.stop()
-        if self.name_checker.running:
-            self.name_checker.stop()
+
+        def stop_if_running(looping_call):
+            if looping_call.running:
+                looping_call.stop()
+
+        for lcall in (self.cost_updater, self.show_status, self.name_checker):
+            stop_if_running(lcall)
+
         self.exchange_rate_manager.stop()
