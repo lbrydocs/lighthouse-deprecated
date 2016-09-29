@@ -203,7 +203,7 @@ class MetadataUpdater(object):
             claims = self.api.get_claims_for_tx({'txid': tx})
             if claims:
                 for claim in claims:
-                    if claim['in claim trie']:
+                    if claim.get('in claim trie', False):
                         next_height = self._get_valid_at_height(claim['name'], claim['claimId'])
                         log.info("%s, %i", claim['name'], next_height)
                         self._claims_to_check.append(claim['name'])
