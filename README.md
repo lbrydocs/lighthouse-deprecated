@@ -3,11 +3,13 @@ Lighthouse is a simple jsonrpc fuzzy-string-comparision based search engine for 
 **Installation**
 
 -Clone this repository
--Run `sudo python setup.py install`
--While running lbrynet-daemon, start lighthouse with `start-lighthouse`. It is recommended to use lbrynet-daemon with
-the lbrycrd wallet. During first run lighthouse will populate a name database, this can take a little while.
 
-The configuration file is located at ~/.lighthouse.yml, if it doesn't exist lighthouse will generate it with default settings.
+-Run `sudo python setup.py install`
+
+-While running lbrynet-daemon, start lighthouse with `start-lighthouse`. 
+
+It is recommended to use lbrynet-daemon with
+the lbrycrd wallet. During first run lighthouse will populate a name database, this can take a little while. The configuration file is located at ~/.lighthouse.yml, if it doesn't exist lighthouse will generate it with default settings.
 
 **Testing**
 
