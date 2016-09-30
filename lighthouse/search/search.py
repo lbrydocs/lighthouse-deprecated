@@ -1,7 +1,7 @@
 import logging.handlers
 from twisted.internet import defer, threads
 from fuzzywuzzy import process
-from lbrynet.metadata.LBRYMetadata import Metadata
+from lbrynet.metadata.Metadata import Metadata
 from lighthouse.util import add_or_move_to_front
 from lighthouse.conf import CACHE_SIZE, MAX_RETURNED_RESULTS, DEFAULT_WEIGHTS
 from lighthouse.conf import METADATA_INDEXES, DEFAULT_SETTINGS, FILTERED, MAX_RESULTS_CACHED

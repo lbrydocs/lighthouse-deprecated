@@ -9,8 +9,8 @@ from twisted.internet import defer, reactor
 from twisted.internet.task import LoopingCall
 from jsonrpc.proxy import JSONRPCProxy
 from lbrynet.conf import API_CONNECTION_STRING, MIN_BLOB_DATA_PAYMENT_RATE
-from lbrynet.metadata.LBRYMetadata import Metadata, verify_name_characters
-from lbrynet.lbrynet_daemon.LBRYExchangeRateManager import ExchangeRateManager
+from lbrynet.metadata.Metadata import Metadata, verify_name_characters
+from lbrynet.lbrynet_daemon.ExchangeRateManager import ExchangeRateManager
 from lighthouse.conf import MAX_SD_TRIES, CACHE_DIR
 
 log = logging.getLogger(__name__)
