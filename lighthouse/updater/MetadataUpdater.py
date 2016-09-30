@@ -93,6 +93,7 @@ class MetadataUpdater(object):
         nout = claim['nOut']
         claim_id = claim['claimId']
         try:
+            assert name == name.lower()
             claim_info = {
                 'name': name,
                 'claim_id': claim_id,
@@ -157,6 +158,7 @@ class MetadataUpdater(object):
 
         def _save(claim_id, name, tx, n, encoded_meta):
             try:
+                assert name == name.lower()
                 decoded = json.loads(base64.b64decode(encoded_meta))
                 verify_name_characters(name)
                 meta = Metadata(decoded, process_now=False)
@@ -251,6 +253,7 @@ class MetadataUpdater(object):
             claim = self._claims.get(txid, {})
             if 'metadata' in claim:
                 try:
+                    assert name == name.lower()
                     meta = Metadata(claim['metadata'], process_now=False)
                     self.metadata[name] = meta
                 except AssertionError:
@@ -321,7 +324,7 @@ class MetadataUpdater(object):
         d.addCallback(lambda _: self.db.runQuery("insert into stream_size values (?, ?)", (sd_hash, total_bytes)))
 
     def _notify_bad_metadata(self, name, txid):
-        log.debug("claim for lbry://%s does not conform to any specification", name)
+        log.info("claim for lbry://%s does not conform to any specification", name)
         if txid not in self.bad_uris:
             self.bad_uris.append(txid)
         return defer.succeed(True)
