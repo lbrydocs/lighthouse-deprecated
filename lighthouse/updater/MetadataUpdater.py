@@ -8,7 +8,7 @@ from twisted.enterprise import adbapi
 from twisted.internet import defer, reactor
 from twisted.internet.task import LoopingCall
 from jsonrpc.proxy import JSONRPCProxy
-from lbrynet.conf import API_CONNECTION_STRING, MIN_BLOB_DATA_PAYMENT_RATE
+from lbrynet.conf import settings as lbrynet_settings
 from lbrynet.metadata.Metadata import Metadata, verify_name_characters
 from lbrynet.lbrynet_daemon.ExchangeRateManager import ExchangeRateManager
 from lighthouse.conf import MAX_SD_TRIES, CACHE_DIR
@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 class MetadataUpdater(object):
     def __init__(self):
         reactor.addSystemEventTrigger('before', 'shutdown', self.stop)
-        self.api = JSONRPCProxy.from_url(API_CONNECTION_STRING)
+        self.api = JSONRPCProxy.from_url(lbrynet_settings.API_CONNECTION_STRING)
         self.cache_dir = CACHE_DIR
         self.cache_file = os.path.join(self.cache_dir, "lighthouse.sqlite")
         self.cost_updater = LoopingCall(self._update_costs)
@@ -98,7 +98,7 @@ class MetadataUpdater(object):
                 'name': name,
                 'claim_id': claim_id,
                 'nout': nout,
-                'metadata': Metadata(json.loads(claim['value']), process_now=False)
+                'metadata': Metadata(json.loads(claim['value']), migrate=False)
             }
             self._claims.update({txid: claim_info})
             if claim_id in self.non_complying_claims:
@@ -161,7 +161,7 @@ class MetadataUpdater(object):
                 assert name == name.lower()
                 decoded = json.loads(base64.b64decode(encoded_meta))
                 verify_name_characters(name)
-                meta = Metadata(decoded, process_now=False)
+                meta = Metadata(decoded, migrate=False)
                 ver = meta.get('ver', '0.0.1')
                 log.debug("lbry://%s conforms to metadata version %s" % (name, ver))
                 self._claims.update({tx: {'name': name, 'claim_id': claim_id, 'nout': n, 'metadata': meta}})
@@ -254,7 +254,7 @@ class MetadataUpdater(object):
             if 'metadata' in claim:
                 try:
                     assert name == name.lower()
-                    meta = Metadata(claim['metadata'], process_now=False)
+                    meta = Metadata(claim['metadata'], migrate=False)
                     self.metadata[name] = meta
                 except AssertionError:
                     log.info("Bad metadata for lbry://%s", name)
@@ -349,10 +349,7 @@ class MetadataUpdater(object):
             fee = 0.0
 
         if size:
-            if isinstance(MIN_BLOB_DATA_PAYMENT_RATE, float):
-                min_data_rate = {'LBC': {'amount': MIN_BLOB_DATA_PAYMENT_RATE, 'address': ''}}
-            else:
-                min_data_rate = MIN_BLOB_DATA_PAYMENT_RATE
+            min_data_rate = {'LBC': {'amount': lbrynet_settings.MIN_BLOB_DATA_PAYMENT_RATE, 'address': ''}}
             stream_size = size / 1000000.0
             data_cost = self.exchange_rate_manager.to_lbc(min_data_rate).amount * stream_size
             available = True
