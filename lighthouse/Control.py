@@ -24,7 +24,7 @@ logging.getLogger("requests").setLevel(logging.WARNING)
 
 
 def cli():
-    ecu = JSONRPCProxy.from_url("http://localhost:" + RPC_PORT)
+    ecu = JSONRPCProxy.from_url("http://localhost:%i" % RPC_PORT)
     try:
         s = ecu.is_running()
     except:
@@ -51,7 +51,7 @@ def start():
 
 
 def stop():
-    ecu = JSONRPCProxy.from_url("http://localhost:" + RPC_PORT)
+    ecu = JSONRPCProxy.from_url("http://localhost:%i" % RPC_PORT)
     try:
         r = ecu.is_running()
         ecu.stop()
