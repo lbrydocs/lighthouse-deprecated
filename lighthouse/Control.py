@@ -45,7 +45,7 @@ def start():
     s = server.Site(engine.root)
     e = server.Site(ecu.root)
 
-    reactor.listenTCP(50005, s, interface="localhost")
+    reactor.listenTCP(50005, s)
     reactor.listenTCP(RPC_PORT, e, interface="localhost")
     reactor.run()
 
