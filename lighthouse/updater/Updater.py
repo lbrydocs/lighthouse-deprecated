@@ -52,6 +52,7 @@ class DBUpdater(object):
         self._metadata_cache = {}
         self._availability_cache = {}
         self._size_cache = {}
+        self._sd_hashes = []
         self.cache_updater = LoopingCall(self.update_caches)
 
     @staticmethod
@@ -127,7 +128,7 @@ class DBUpdater(object):
         return d
 
     def _start_looping_calls(self):
-        start_if_not_running(self.cache_updater, 300)
+        start_if_not_running(self.cache_updater)
         start_if_not_running(self.blockchain_checker, 300)
         start_if_not_running(self.availability_checker, 300)
 
@@ -156,6 +157,9 @@ class DBUpdater(object):
         self._availability_cache[name] = peers
         return
 
+    def update_sd_hashes(self):
+        self._sd_hashes = [self.metadata[name]['sources']['lbry_sd_hash'] for name in self.names]
+
     def _update_name(self, name):
         def _do_update(_metadata):
             self._update_name_cache(_metadata, name)
@@ -173,7 +177,7 @@ class DBUpdater(object):
     def update_caches(self):
         d = self.claimtrie_manager.get_claimed_names()
         d.addCallback(lambda names: self.update_names(names))
-        d.addCallback(lambda _: log.info("Updated metadata cache"))
+        d.addCallback(lambda _: self.update_sd_hashes())
 
     @property
     def metadata(self):
@@ -186,3 +190,7 @@ class DBUpdater(object):
     @property
     def names(self):
         return self._metadata_cache.keys()
+
+    @property
+    def sd_hashes(self):
+        return self._sd_hashes

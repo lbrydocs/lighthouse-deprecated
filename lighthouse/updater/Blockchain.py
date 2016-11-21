@@ -140,10 +140,13 @@ class LBRYcrdManager(object):
                 break
             except (socket.error, JSONRPCException):
                 tries += 1
-                log.warning("Failed to connect to lbrycrdd.")
+                if tries > 2:
+                    log.warning("Failed to connect to lbrycrdd.")
+
                 if tries < 6:
                     time.sleep(2 ** tries)
-                    log.warning("Trying again in %d seconds", 2 ** tries)
+                    if tries > 2:
+                        log.warning("Trying again in %d seconds", 2 ** tries)
                 else:
                     log.warning("Giving up.")
         else:

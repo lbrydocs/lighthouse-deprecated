@@ -223,7 +223,6 @@ class ClaimManager(object):
     def update_claimtrie(self):
         d = self.blockchain_manager.get_nametrie()
         d.addCallback(lambda claimtrie: self._handle_claimtrie_response(claimtrie))
-        d.addCallback(lambda _: log.info("Updated winning claims"))
 
     def get_claimed_names(self):
         def _clean_results(results):

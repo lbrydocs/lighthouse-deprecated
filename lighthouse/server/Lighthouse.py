@@ -4,8 +4,10 @@ from decimal import Decimal
 from txjsonrpc import jsonrpclib
 from txjsonrpc.web.jsonrpc import Handler
 from txjsonrpc.web import jsonrpc
-from twisted.internet import defer, reactor
+from twisted.internet import defer, reactor, error
 from twisted.web import server
+from lighthouse.conf import REFLECTOR_PORT
+from lighthouse.server.reflector import SDReflectorServerFactory
 from lighthouse.updater.Updater import DBUpdater
 from lighthouse.search.search import LighthouseSearch
 
@@ -22,7 +24,6 @@ class Lighthouse(jsonrpc.JSONRPC):
         self.fuzzy_ratio_cache = {}
         self.unique_clients = {}
         self.sd_cache = {}
-        self.running = False
 
     def render(self, request):
         request.content.seek(0, 0)
@@ -91,12 +92,25 @@ class Lighthouse(jsonrpc.JSONRPC):
         request.write(s)
         request.finish()
 
+    def _start_reflector(self):
+        log.info("Starting sd reflector")
+        reflector_factory = SDReflectorServerFactory(
+                    self.database_updater.availability_manager.peer_manager,
+                    self.database_updater.availability_manager.blob_manager,
+                    self.database_updater
+        )
+        try:
+            self.reflector_server_port = reactor.listenTCP(REFLECTOR_PORT, reflector_factory)
+            log.info('Started sd reflector on port %i', REFLECTOR_PORT)
+        except error.CannotListenError as e:
+            log.exception("Couldn't bind sd reflector to port %d", self.reflector_port)
+            raise ValueError("{} lighthouse may already be running on your computer.".format(e))
+
     def start(self):
-        self.running = True
         self.database_updater.start()
+        self._start_reflector()
 
     def shutdown(self):
-        self.running = False
         self.database_updater.stop()
 
     def jsonrpc_search(self, search):

@@ -1,3 +1,4 @@
+import os
 import logging
 import base64
 from time import time
@@ -7,6 +8,7 @@ from lbrynet.core.client.DHTPeerFinder import DHTPeerFinder
 from lbrynet.core.server.DHTHashAnnouncer import DHTHashAnnouncer
 from lbrynet.core.PeerManager import PeerManager
 from lbrynet.core.BlobManager import DiskBlobManager
+from lbrynet.core.StreamDescriptor import BlobStreamDescriptorReader
 from lbrynet.conf import settings
 from lbrynet.dht.node import Node
 from lighthouse.conf import LBRYID
@@ -26,7 +28,7 @@ class StreamAvailabilityManager(object):
         self.updater = LoopingCall(self.update_winning_availabilities)
         self.dht_node_port = 4444
         self.blob_data_dir = settings.data_dir
-        self.blobfiles_dir_name = settings.BLOBFILES_DIR
+        self.blob_dir = os.path.join(self.blob_data_dir, settings.BLOBFILES_DIR)
 
         self.peer_port = 3333
         self.known_dht_nodes = [
@@ -39,6 +41,10 @@ class StreamAvailabilityManager(object):
     def _update_availability_db(self, claim_id, sd_hash, peers):
         d = self.db.runQuery("insert or replace into stream_availability values (?, ?, ?, ?)",
                              (claim_id, sd_hash, peers, int(time())))
+        return d
+
+    def _update_stream_size_db(self, claim_id, sd_hash, total_bytes):
+        d = self.db.runQuery("insert or replace into stream_size values (?, ?, ?)", (claim_id, sd_hash, total_bytes))
         return d
 
     def get_total_unavailable(self):
@@ -58,20 +64,35 @@ class StreamAvailabilityManager(object):
         d.addCallback(lambda (peers, ): peers[0])
         return d
 
+    def update_stream_size(self, claim_id, sd_hash):
+        def _should_update_size(sd_hash):
+            if sd_hash:
+                d = self.blob_manager.get_blob(sd_hash[0], True)
+                d.addCallback(BlobStreamDescriptorReader)
+                d.addCallback(lambda sd_blob: sd_blob.get_info())
+                d.addCallback(lambda blob_info: sum(blob['length'] for blob in blob_info['blobs']))
+                d.addCallback(lambda total_bytes: self._update_stream_size_db(claim_id, sd_hash[0], total_bytes))
+                return d
+            return None
+        d = self.blob_manager.completed_blobs([sd_hash])
+        d.addCallback(_should_update_size)
+        return d
+
     def update_availability(self, claim_id, sd_hash):
         d = self.get_peers_for_hash(sd_hash)
         d.addCallback(lambda peers: self._update_availability_db(claim_id, sd_hash, len(peers)))
+        d.addCallback(lambda _: self.update_stream_size(claim_id, sd_hash))
         return d
 
     def iter_update(self, stream_infos):
-        log.info("Updating availabilities for %i streams", len(stream_infos))
+        log.debug("Updating availabilities for %i streams", len(stream_infos))
         for claim_id, sd_hash in stream_infos:
             yield self.update_availability(claim_id, sd_hash)
 
     def update_winning_availabilities(self):
         d = self.db.runQuery("select claim_id, sd_hash from metadata")
         d.addCallback(lambda r: list(self.iter_update(r)))
-        d.addCallback(lambda _: log.info("Updated availabilities"))
+        d.addCallback(lambda _: log.info("Updated availabilities and sizes"))
 
     def start(self):
         if self.peer_manager is None:
@@ -95,7 +116,6 @@ class StreamAvailabilityManager(object):
             self.hash_announcer.run_manage_loop()
             return self.blob_manager.setup()
 
-
         ds = []
 
         for host, port in self.known_dht_nodes:
@@ -114,7 +134,7 @@ class StreamAvailabilityManager(object):
         if self.hash_announcer is None:
             self.hash_announcer = DHTHashAnnouncer(self.dht_node, self.peer_port)
         if self.blob_manager is None:
-            self.blob_manager = DiskBlobManager(self.hash_announcer, self.blobfiles_dir_name, self.blob_data_dir)
+            self.blob_manager = DiskBlobManager(self.hash_announcer, self.blob_dir, self.blob_data_dir)
 
         d1 = defer.DeferredList(ds)
         d1.addCallback(join_resolved_addresses)
