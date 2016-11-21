@@ -13,8 +13,8 @@ class LighthouseController(jsonrpc.JSONRPC):
     def jsonrpc_dump_sessions(self):
         return self.lighthouse.unique_clients
 
-    def jsonrpc_dump_metadata(self):
-        return self.lighthouse.metadata_updater.metadata
+    def jsonrpc_dump_metadata_cache(self):
+        return self.lighthouse.database_updater.metadata
 
     def jsonrpc_dump_indexes(self):
         r = {}
@@ -23,10 +23,10 @@ class LighthouseController(jsonrpc.JSONRPC):
         return r
 
     def jsonrpc_dump_size_cache(self):
-        return self.lighthouse.metadata_updater.size_cache
+        return self.lighthouse.database_updater.size_cache
 
-    def jsonrpc_dump_cost_and_available(self):
-        return self.lighthouse.metadata_updater.cost_and_availability
+    def jsonrpc_dump_availability_cache(self):
+        return self.lighthouse.database_updater.availability
 
     def jsonrpc_stop(self):
         reactor.callLater(0.0, reactor.stop)

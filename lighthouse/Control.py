@@ -1,10 +1,11 @@
-from lighthouse.server.LighthouseServer import LighthouseControllerServer, LighthouseServer
+import sys
+import os
+import logging.handlers
 from twisted.web import server
 from twisted.internet import reactor
 from jsonrpc.proxy import JSONRPCProxy
-import logging.handlers
-import sys
-import os
+from lighthouse.server.LighthouseServer import LighthouseControllerServer, LighthouseServer
+
 
 RPC_PORT = 50004
 
@@ -58,3 +59,7 @@ def stop():
         print "lighthouse stopped"
     except:
         print "lighthouse wasn't running"
+
+
+if __name__ == "__main__":
+    start()

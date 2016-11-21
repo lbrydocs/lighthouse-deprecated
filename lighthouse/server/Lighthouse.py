@@ -1,13 +1,12 @@
-import logging.handlers
 import time
-
+import logging.handlers
+from decimal import Decimal
 from txjsonrpc import jsonrpclib
 from txjsonrpc.web.jsonrpc import Handler
-from decimal import Decimal
+from txjsonrpc.web import jsonrpc
 from twisted.internet import defer, reactor
 from twisted.web import server
-from txjsonrpc.web import jsonrpc
-from lighthouse.updater.MetadataUpdater import MetadataUpdater
+from lighthouse.updater.Updater import DBUpdater
 from lighthouse.search.search import LighthouseSearch
 
 log = logging.getLogger(__name__)
@@ -17,8 +16,8 @@ class Lighthouse(jsonrpc.JSONRPC):
     def __init__(self):
         jsonrpc.JSONRPC.__init__(self)
         reactor.addSystemEventTrigger('before', 'shutdown', self.shutdown)
-        self.metadata_updater = MetadataUpdater()
-        self.search_engine = LighthouseSearch(self.metadata_updater)
+        self.database_updater = DBUpdater()
+        self.search_engine = LighthouseSearch(self.database_updater)
         self.fuzzy_name_cache = []
         self.fuzzy_ratio_cache = {}
         self.unique_clients = {}
@@ -34,7 +33,7 @@ class Lighthouse(jsonrpc.JSONRPC):
         except ValueError:
             return server.failure
         functionPath = parsed.get("method")
-        if functionPath not in ["search", "announce_sd", "check_available"]:
+        if functionPath not in ["search"]:
             return server.failure
         args = parsed.get('params')
         if len(args) != 1:
@@ -94,25 +93,11 @@ class Lighthouse(jsonrpc.JSONRPC):
 
     def start(self):
         self.running = True
-        self.metadata_updater.start()
+        self.database_updater.start()
 
     def shutdown(self):
         self.running = False
-        self.metadata_updater.stop()
+        self.database_updater.stop()
 
     def jsonrpc_search(self, search):
         return self.search_engine.search(search)
-
-    def jsonrpc_announce_sd(self, sd_hash):
-        sd = self.metadata_updater.size_cache.get(sd_hash, False)
-        if sd:
-            return "Already announced"
-        self.metadata_updater.sd_attempts[sd_hash] = 0
-        self.metadata_updater.descriptors_to_download.append(sd_hash)
-        return "Pending"
-
-    def jsonrpc_check_available(self, sd_hash):
-        if self.metadata_updater.size_cache.get(sd_hash, False):
-            return True
-        else:
-            return False

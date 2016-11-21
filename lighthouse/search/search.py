@@ -56,7 +56,7 @@ class FuzzyNameIndex(FuzzyIndex):
         d = threads.deferToThread(
             process.extract,
             search,
-            self.updater.metadata.keys(),
+            self.updater.names,
             limit=max_results
         )
         d.addCallback(lambda r: self._update_cache(search, r))
@@ -68,7 +68,7 @@ class FuzzyMetadataIndex(FuzzyIndex):
         d = threads.deferToThread(
             process.extract,
             search,
-            self.updater.metadata.keys(),
+            self.updater.names,
             limit=max_results,
             processor=lambda x: self.updater.metadata[x][self.index]
         )
@@ -83,12 +83,13 @@ class LighthouseSearch(object):
         self.indexes.update({'name': FuzzyNameIndex(self.updater)})
 
     def _get_dict_for_return(self, name):
-        meta = Metadata(self.updater.metadata[name], process_now=True)
+        meta = self.updater.metadata[name]
         r = {
             'name': name,
             'value': meta,
-            'cost': self.updater.cost_and_availability[name]['cost'],
-            'available': self.updater.cost_and_availability[name]['available'],
+            'availability': self.updater.availability[name]
+            # 'cost': self.updater.cost_and_availability[name]['cost'],
+            # 'available': self.updater.cost_and_availability[name]['available'],
         }
         return r
 
@@ -148,7 +149,6 @@ class LighthouseSearch(object):
 
         # lcase search as to by default weigh lower-case names higher than names with odd capitalizations
         search = search.lower()
-
         d = search_by(search, settings)
         d.addCallback(_apply_weights)
         d.addCallback(_combine)

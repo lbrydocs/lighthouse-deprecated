@@ -1,5 +1,7 @@
 import yaml
 import os
+import base64
+from lbrynet.core.utils import generate_id
 
 
 def get_settings(path):
@@ -23,7 +25,8 @@ default_settings = {
     'cache size': 1000,
     'max results cached': 100,
     'max sd attempts': 1,
-    'filtered uris': ['socialengineering']
+    'filtered uris': ['socialengineering'],
+    'lbryid': base64.encodestring(generate_id())
 }
 
 if not os.path.isfile(conf):
@@ -47,6 +50,7 @@ CACHE_SIZE = settings['cache size']
 MAX_SD_TRIES = settings['max sd attempts']
 MAX_RESULTS_CACHED = settings['max results cached']
 FILTERED = settings['filtered uris']
+LBRYID = settings['lbryid']
 
 if not os.path.isdir(CACHE_DIR):
     os.mkdir(CACHE_DIR)
