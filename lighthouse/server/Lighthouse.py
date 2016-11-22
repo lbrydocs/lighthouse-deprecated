@@ -107,8 +107,9 @@ class Lighthouse(jsonrpc.JSONRPC):
             raise ValueError("{} lighthouse may already be running on your computer.".format(e))
 
     def start(self):
-        self.database_updater.start()
-        self._start_reflector()
+        d = self.database_updater.start()
+        d.addCallback(lambda _: self._start_reflector())
+        d.addErrback(log.exception)
 
     def shutdown(self):
         self.database_updater.stop()

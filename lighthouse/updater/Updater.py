@@ -134,6 +134,7 @@ class DBUpdater(object):
         d.addCallback(lambda _: self.availability_manager.start())
         d.addCallback(lambda _: self.blockchain_manager.start())
         d.addCallback(lambda _: self._start_looping_calls())
+        return d
 
     def stop(self):
         log.info("Shutting down")
