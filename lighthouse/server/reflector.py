@@ -17,7 +17,7 @@ class SDReflectorServer(Protocol):
         log.debug('Connection made to %s', peer_info)
         self.peer = self.factory.peer_manager.get_peer(peer_info.host, peer_info.port)
         self.blob_manager = self.factory.blob_manager
-        self.lighthouse_updater = self.factory.hashlighthouse_updateres_needed
+        self.lighthouse_updater = self.factory.lighthouse_updater
         self.received_handshake = False
         self.peer_version = None
         self.receiving_blob = False
@@ -85,7 +85,7 @@ class SDReflectorServer(Protocol):
         return defer.succeed({'version': 0})
 
     def determine_blob_needed(self, blob):
-        if blob.blob_hash not in self.lighthouse_updater.hashes_needed:
+        if blob.blob_hash not in self.lighthouse_updater.sd_hashes:
             log.info("blob not needed %s", blob.blob_hash)
             return {'send_blob': False}
         if blob.is_validated():
