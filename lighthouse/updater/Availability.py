@@ -25,7 +25,6 @@ class StreamAvailabilityManager(object):
         self.dht_node = None
         self.hash_announcer = None
         self.blob_manager = None
-        self.updater = LoopingCall(self.update_winning_availabilities)
         self.dht_node_port = 4444
         self.blob_data_dir = settings.data_dir
         self.blob_dir = os.path.join(self.blob_data_dir, settings.BLOBFILES_DIR)
@@ -89,10 +88,10 @@ class StreamAvailabilityManager(object):
         for claim_id, sd_hash in stream_infos:
             yield self.update_availability(claim_id, sd_hash)
 
-    def update_winning_availabilities(self):
+    def update(self):
         d = self.db.runQuery("select claim_id, sd_hash from metadata")
         d.addCallback(lambda r: list(self.iter_update(r)))
-        d.addCallback(lambda _: log.info("Updated availabilities and sizes"))
+        return d
 
     def start(self):
         if self.peer_manager is None:

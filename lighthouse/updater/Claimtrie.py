@@ -89,7 +89,6 @@ class ClaimManager(object):
         self.blockchain_manager = blockchain_manager
         self.availability_manager = availability_manager
         self.metadata_manager = MetadataManager(db)
-        self.updater = LoopingCall(self.update_claimtrie)
         self._last_checked_height = None
 
     def _update_claim_db(self, claim_id, uri, claim_data, txid, nout, height, amount, in_claim_trie):
@@ -152,7 +151,7 @@ class ClaimManager(object):
             d.addCallback(lambda _: self.availability_manager.update_availability(claim.claim_id, claim.claim_id))
             log.debug("Update winning metadata for %s", claim.claim_id)
         except (ValueError, ValidationError):
-            log.warning("Skipping non-conforming %s... (nout %i) claim for lbry://%s", claim.txid[:8], claim.nout,
+            log.debug("Skipping non-conforming %s... (nout %i) claim for lbry://%s", claim.txid[:8], claim.nout,
                         claim.uri)
             d = self._add_claim_to_skipped(claim.txid, claim.nout)
         return d
@@ -210,19 +209,20 @@ class ClaimManager(object):
             return False
 
         for name in claimtrie:
+            txid, nout = claimtrie[name]
             try:
                 verify_name_characters(name)
             except Exception:
-                continue
+                d = self._add_claim_to_skipped(txid, nout)
             else:
-                txid, nout = claimtrie[name]
                 d = self._get_winning_tx_for_name(name)
                 d.addCallback(_check_tx, txid, nout)
                 d.addCallback(_update_if_needed, txid)
 
-    def update_claimtrie(self):
+    def update(self):
         d = self.blockchain_manager.get_nametrie()
         d.addCallback(lambda claimtrie: self._handle_claimtrie_response(claimtrie))
+        return d
 
     def get_claimed_names(self):
         def _clean_results(results):

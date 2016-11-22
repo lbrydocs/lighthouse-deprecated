@@ -46,13 +46,11 @@ class DBUpdater(object):
         self.availability_manager = None
         self.claimtrie_manager = None
 
-        self.availability_checker = None
-        self.claimtrie_checker = None
-
         self._metadata_cache = {}
         self._availability_cache = {}
         self._size_cache = {}
         self._sd_hashes = []
+
         self.cache_updater = LoopingCall(self.update_caches)
 
     @staticmethod
@@ -122,20 +120,14 @@ class DBUpdater(object):
         self.db = adbapi.ConnectionPool('sqlite3', self.db_path, check_same_thread=False)
         self.availability_manager = StreamAvailabilityManager(self.db)
         self.claimtrie_manager = ClaimManager(self.db, self.blockchain_manager, self.availability_manager)
-        self.availability_checker = self.availability_manager.updater
-        self.blockchain_checker = self.claimtrie_manager.updater
         d = self.db.runInteraction(self._create_tables)
         return d
 
     def _start_looping_calls(self):
-        start_if_not_running(self.cache_updater)
-        start_if_not_running(self.blockchain_checker, 300)
-        start_if_not_running(self.availability_checker, 300)
+        start_if_not_running(self.cache_updater, 30)
 
     def _stop_looping_calls(self):
         stop_if_running(self.cache_updater)
-        stop_if_running(self.blockchain_checker)
-        stop_if_running(self.availability_checker)
 
     def start(self):
         d = self._setup()
@@ -149,7 +141,7 @@ class DBUpdater(object):
         d.addCallback(lambda _: self.blockchain_manager.stop())
         d.addCallback(lambda _: self._stop_looping_calls())
 
-    def _update_name_cache(self, metadata, name):
+    def _update_metadata_cache(self, metadata, name):
         self._metadata_cache[name] = metadata
         return
 
@@ -162,7 +154,7 @@ class DBUpdater(object):
 
     def _update_name(self, name):
         def _do_update(_metadata):
-            self._update_name_cache(_metadata, name)
+            self._update_metadata_cache(_metadata, name)
             d = self.availability_manager.get_availability_for_name(name)
             d.addCallback(self._update_availability_cache, name)
             return d
@@ -175,9 +167,12 @@ class DBUpdater(object):
         return defer.DeferredList([self._update_name(name) for name in names])
 
     def update_caches(self):
-        d = self.claimtrie_manager.get_claimed_names()
+        d = self.claimtrie_manager.update()
+        d.addCallback(lambda _: self.availability_manager.update())
+        d.addCallback(lambda _: self.claimtrie_manager.get_claimed_names())
         d.addCallback(lambda names: self.update_names(names))
         d.addCallback(lambda _: self.update_sd_hashes())
+        d.addCallback(lambda _: log.info("Updated caches"))
 
     @property
     def metadata(self):
