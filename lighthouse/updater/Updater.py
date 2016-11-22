@@ -124,7 +124,7 @@ class DBUpdater(object):
         return d
 
     def _start_looping_calls(self):
-        start_if_not_running(self.cache_updater, 30)
+        start_if_not_running(self.cache_updater, 180)
 
     def _stop_looping_calls(self):
         stop_if_running(self.cache_updater)
