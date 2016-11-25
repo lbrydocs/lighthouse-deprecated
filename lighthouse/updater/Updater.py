@@ -152,7 +152,6 @@ class DBUpdater(object):
 
     def _update_size_cache(self, size, name):
         if size:
-            log.info("updated stream size for lbry://%s", name)
             self._size_cache[name] = size
         return
 
