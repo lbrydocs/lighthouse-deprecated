@@ -105,10 +105,6 @@ class ClaimManager(object):
         d = self.db.runQuery("insert or replace into claimtrie values (?, ?, ?, ?)", (uri, claim_id, txid, nout))
         return d
 
-    def _update_stream_size_db(self, claim_id, sd_hash, total_bytes):
-        d = self.db.runQuery("insert or replace into stream_size values (?, ?, ?)", (claim_id, sd_hash, total_bytes))
-        return d
-
     def _add_claim_to_skipped(self, txid, nout):
         d = self.db.runQuery("insert or replace into skipped_claims values (?, ?)", (txid, nout))
         return d

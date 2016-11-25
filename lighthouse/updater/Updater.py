@@ -150,18 +150,28 @@ class DBUpdater(object):
         self._availability_cache[name] = peers
         return
 
+    def _update_size_cache(self, size, name):
+        if size:
+            log.info("updated stream size for lbry://%s", name)
+            self._size_cache[name] = size
+        return
+
     def update_sd_hashes(self):
         self._sd_hashes = [self.metadata[name]['sources']['lbry_sd_hash'] for name in self.names]
+        return
 
     def _update_name(self, name):
         def _do_update(_metadata):
             self._update_metadata_cache(_metadata, name)
             d = self.availability_manager.get_availability_for_name(name)
             d.addCallback(self._update_availability_cache, name)
+            d.addCallback(lambda _: self.availability_manager.get_size_for_name(name))
+            d.addCallback(self._update_size_cache, name)
             return d
 
         d = self.claimtrie_manager.metadata_manager.get_winning_metadata(name)
         d.addCallback(lambda metadata: False if not metadata else _do_update(metadata))
+        d.addErrback(log.exception)
         return d
 
     def update_names(self, names):
@@ -173,7 +183,7 @@ class DBUpdater(object):
         d.addCallback(lambda _: self.claimtrie_manager.get_claimed_names())
         d.addCallback(lambda names: self.update_names(names))
         d.addCallback(lambda _: self.update_sd_hashes())
-        d.addCallback(lambda _: log.info("Updated caches"))
+        d.addErrback(log.exception)
 
     @property
     def metadata(self):
@@ -190,3 +200,7 @@ class DBUpdater(object):
     @property
     def sd_hashes(self):
         return self._sd_hashes
+
+    @property
+    def stream_sizes(self):
+        return self._size_cache

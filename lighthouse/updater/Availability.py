@@ -46,6 +46,11 @@ class StreamAvailabilityManager(object):
         d = self.db.runQuery("insert or replace into stream_size values (?, ?, ?)", (claim_id, sd_hash, total_bytes))
         return d
 
+    def get_size_for_name(self, name):
+        d = self.db.runQuery("select total_bytes from stream_size where claim_id=(select claim_id from claims where uri=?)", (name, ))
+        d.addCallback(lambda total_size: None if not total_size else next(s[0] for s in total_size))
+        return d
+
     def get_total_unavailable(self):
         d = self.db.runQuery("select claim_id from stream_availability where peers=0")
         d.addCallback(lambda (claims, ): len(claims))
@@ -109,7 +114,7 @@ class StreamAvailabilityManager(object):
 
         def start_dht(addresses):
             log.info("Starting the dht")
-            log.info("lbry id: %s", base64.encodestring(self.lbryid))
+            log.info("lbry id: %s", base64.encodestring(self.lbryid).strip("\n"))
             self.dht_node.joinNetwork(addresses)
             self.peer_finder.run_manage_loop()
             self.hash_announcer.run_manage_loop()

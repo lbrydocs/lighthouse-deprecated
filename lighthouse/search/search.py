@@ -82,13 +82,11 @@ class LighthouseSearch(object):
         self.indexes.update({'name': FuzzyNameIndex(self.updater)})
 
     def _get_dict_for_return(self, name):
-        meta = self.updater.metadata[name]
         r = {
             'name': name,
-            'value': meta,
-            'availability': self.updater.availability[name]
-            # 'cost': self.updater.cost_and_availability[name]['cost'],
-            # 'available': self.updater.cost_and_availability[name]['available'],
+            'value': self.updater.metadata[name],
+            'availability': self.updater.availability[name],
+            'stream_size': self.updater.stream_sizes.get(name, False)
         }
         return r
 
