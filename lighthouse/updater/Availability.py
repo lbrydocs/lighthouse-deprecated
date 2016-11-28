@@ -43,11 +43,16 @@ class StreamAvailabilityManager(object):
         return d
 
     def _update_stream_size_db(self, claim_id, sd_hash, total_bytes):
-        d = self.db.runQuery("insert or replace into stream_size values (?, ?, ?)", (claim_id, sd_hash, total_bytes))
+        d = self.db.runQuery(
+            "insert or replace into stream_size values (?, ?, ?)",
+            (claim_id, sd_hash, total_bytes))
         return d
 
     def get_size_for_name(self, name):
-        d = self.db.runQuery("select total_bytes from stream_size where claim_id=(select claim_id from claims where uri=?)", (name, ))
+        d = self.db.runQuery(
+            "select total_bytes from stream_size "
+            "where claim_id=(select claim_id from claims where uri=?)",
+            (name, ))
         d.addCallback(lambda total_size: None if not total_size else next(s[0] for s in total_size))
         return d
 
@@ -63,8 +68,10 @@ class StreamAvailabilityManager(object):
 
     def get_availability_for_name(self, name):
         d = self.db.runQuery("select claim_id from claims where uri=?", (name, ))
-        d.addCallback(lambda (claim_id, ): self.db.runQuery("select peers from stream_availability where claim_id=?",
-                                                            (claim_id[0], )))
+        d.addCallback(
+            lambda (claim_id, ): self.db.runQuery(
+                "select peers from stream_availability where claim_id=?",
+                (claim_id[0], )))
         d.addCallback(lambda (peers, ): peers[0])
         return d
 
@@ -75,7 +82,9 @@ class StreamAvailabilityManager(object):
                 d.addCallback(BlobStreamDescriptorReader)
                 d.addCallback(lambda sd_blob: sd_blob.get_info())
                 d.addCallback(lambda blob_info: sum(blob['length'] for blob in blob_info['blobs']))
-                d.addCallback(lambda total_bytes: self._update_stream_size_db(claim_id, sd_hash[0], total_bytes))
+                d.addCallback(
+                    lambda total_bytes: self._update_stream_size_db(
+                        claim_id, sd_hash[0], total_bytes))
                 return d
             return None
         d = self.blob_manager.completed_blobs([sd_hash])
@@ -138,7 +147,8 @@ class StreamAvailabilityManager(object):
         if self.hash_announcer is None:
             self.hash_announcer = DHTHashAnnouncer(self.dht_node, self.peer_port)
         if self.blob_manager is None:
-            self.blob_manager = DiskBlobManager(self.hash_announcer, self.blob_dir, self.blob_data_dir)
+            self.blob_manager = DiskBlobManager(
+                self.hash_announcer, self.blob_dir, self.blob_data_dir)
 
         d1 = defer.DeferredList(ds)
         d1.addCallback(join_resolved_addresses)
