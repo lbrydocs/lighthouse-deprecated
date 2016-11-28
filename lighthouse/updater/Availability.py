@@ -25,16 +25,11 @@ class StreamAvailabilityManager(object):
         self.dht_node = None
         self.hash_announcer = None
         self.blob_manager = None
-        self.dht_node_port = 4444
+        self.dht_node_port = settings.dht_node_port
         self.blob_data_dir = settings.data_dir
         self.blob_dir = os.path.join(self.blob_data_dir, settings.BLOBFILES_DIR)
-
-        self.peer_port = 3333
-        self.known_dht_nodes = [
-            ('lbrynet1.lbry.io', 4444),
-            ('lbrynet2.lbry.io', 4444),
-            ('lbrynet3.lbry.io', 4444)
-        ]
+        self.peer_port = settings.peer_port
+        self.known_dht_nodes = settings.known_dht_nodes
         self.external_ip = '127.0.0.1'
 
     def _update_availability_db(self, claim_id, sd_hash, peers):
