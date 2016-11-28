@@ -16,9 +16,10 @@ def save_settings(path, settings):
     f.write(yaml.dump(settings))
     f.close()
 
-conf = os.path.join(os.path.expanduser("~/"), ".lighthouse.yml")
+
+conf = os.path.join(os.path.expanduser("~"), ".lighthouse.yml")
 default_settings = {
-    'cache dir': os.path.join(os.path.expanduser("~/"), '.lighthouse'),
+    'cache dir': os.path.join(os.path.expanduser("~"), '.lighthouse'),
     'default search keys': ['title', 'description', 'author', 'name'],
     'weights': {'name': 1.25, 'title': 1.0, 'description': 1.0, 'author': 1.0},
     'max returned results': 25,
