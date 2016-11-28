@@ -3,7 +3,7 @@ import logging.handlers
 
 from twisted.enterprise import adbapi
 from twisted.internet.task import LoopingCall
-from twisted.internet import reactor, defer
+from twisted.internet import defer
 
 from lighthouse.conf import CACHE_DIR
 from lighthouse.updater.Availability import StreamAvailabilityManager
@@ -37,7 +37,6 @@ def stop_if_running(looping_call):
 
 class DBUpdater(object):
     def __init__(self):
-        reactor.addSystemEventTrigger('before', 'shutdown', self.stop)
         self.db = None
         self.cache_dir = CACHE_DIR
         self.db_path = os.path.join(self.cache_dir, "lighthouse.sqlite")
@@ -203,3 +202,8 @@ class DBUpdater(object):
     @property
     def stream_sizes(self):
         return self._size_cache
+
+    def get_stream_info(self, name):
+        r = dict(name=name, value=self.metadata[name], availability=self.availability[name],
+                 stream_size=self.stream_sizes.get(name, False))
+        return r

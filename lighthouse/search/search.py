@@ -81,15 +81,6 @@ class LighthouseSearch(object):
         self.indexes = {key: FuzzyMetadataIndex(key, self.updater) for key in METADATA_INDEXES}
         self.indexes.update({'name': FuzzyNameIndex(self.updater)})
 
-    def _get_dict_for_return(self, name):
-        r = {
-            'name': name,
-            'value': self.updater.metadata[name],
-            'availability': self.updater.availability[name],
-            'stream_size': self.updater.stream_sizes.get(name, False)
-        }
-        return r
-
     def search(self, search, settings=DEFAULT_SETTINGS):
         def search_by(search, settings):
             search_keys = settings.get('search_by')
@@ -141,7 +132,7 @@ class LighthouseSearch(object):
             shortened = results[:MAX_RETURNED_RESULTS]
             final = []
             for r in shortened:
-                final.append(self._get_dict_for_return(r[0]))
+                final.append(self.updater.get_stream_info(r[0]))
             return final
 
         def _direct_match(search, results):
