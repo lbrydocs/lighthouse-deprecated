@@ -5,7 +5,7 @@ from twisted.web import server
 from twisted.internet import reactor
 from jsonrpc.proxy import JSONRPCProxy
 from lighthouse.server.LighthouseServer import LighthouseControllerServer, LighthouseServer
-
+from lbrynet import conf as lbrynet_conf
 
 RPC_PORT = 50004
 
@@ -40,6 +40,8 @@ def cli():
 
 
 def start():
+    # the blob manager needs this directory to exists
+    lbrynet_conf.settings.ensure_data_dir()
     engine = LighthouseServer()
     ecu = LighthouseControllerServer(engine.search_engine)
     engine.start()
