@@ -138,8 +138,8 @@ class DBUpdater(object):
 
     def stop(self):
         log.info("Shutting down")
-        d = self.availability_manager.stop()
-        d.addCallback(lambda _: self.blockchain_manager.stop())
+        d = safe_stop(self.availability_manager)
+        d.addCallback(lambda _: safe_stop(self.blockchain_manager))
         d.addCallback(lambda _: self._stop_looping_calls())
 
     def _update_metadata_cache(self, metadata, name):
@@ -203,3 +203,10 @@ class DBUpdater(object):
     @property
     def stream_sizes(self):
         return self._size_cache
+
+
+def safe_stop(manager):
+    if manager:
+        return manager.stop()
+    else:
+        return defer.succeed(True)
