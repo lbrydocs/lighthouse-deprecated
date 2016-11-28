@@ -16,6 +16,7 @@ def save_settings(path, settings):
     f.write(yaml.dump(settings))
     f.close()
 
+
 conf = os.path.join(os.path.expanduser("~/"), ".lighthouse.yml")
 default_settings = {
     'cache dir': os.path.join(os.path.expanduser("~/"), '.lighthouse'),
