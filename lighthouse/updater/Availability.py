@@ -2,8 +2,7 @@ import os
 import logging
 import base64
 from time import time
-from twisted.internet import reactor, defer
-from twisted.internet.task import LoopingCall
+from twisted.internet import defer, reactor
 from lbrynet.core.client.DHTPeerFinder import DHTPeerFinder
 from lbrynet.core.server.DHTHashAnnouncer import DHTHashAnnouncer
 from lbrynet.core.PeerManager import PeerManager
@@ -89,13 +88,33 @@ class StreamAvailabilityManager(object):
         return d
 
     def iter_update(self, stream_infos):
-        log.debug("Updating availabilities for %i streams", len(stream_infos))
-        for claim_id, sd_hash in stream_infos:
-            yield self.update_availability(claim_id, sd_hash)
+        def _update_needed(last_availability_info):
+            skipped = []
+            for claim_id, sd_hash, peers, last_checked in last_availability_info:
+                if time() - last_checked > 1800:
+                    continue
+                elif time() - last_checked < 900 and peers >= 2:
+                    skipped.append(claim_id)
+                elif time() - last_checked < 600 and peers >= 1:
+                    skipped.append(claim_id)
+                elif time() - last_checked < 300:
+                    skipped.append(claim_id)
+                elif (claim_id, sd_hash) not in stream_infos:
+                    skipped.append(claim_id)
+            for claim_id, sd_hash in stream_infos:
+                if claim_id in skipped:
+                    continue
+                else:
+                    yield self.update_availability(claim_id, sd_hash)
+
+        d = self.db.runQuery("select claim_id, sd_hash, peers, last_checked from stream_availability")
+        d.addCallback(_update_needed)
+        d.addCallback(list)
+        return d
 
     def update(self):
         d = self.db.runQuery("select claim_id, sd_hash from metadata")
-        d.addCallback(lambda r: list(self.iter_update(r)))
+        d.addCallback(self.iter_update)
         return d
 
     def start(self):
@@ -118,7 +137,6 @@ class StreamAvailabilityManager(object):
             self.dht_node.joinNetwork(addresses)
             self.peer_finder.run_manage_loop()
             self.hash_announcer.run_manage_loop()
-            return self.blob_manager.setup()
 
         ds = []
 
