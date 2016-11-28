@@ -3,7 +3,6 @@ import logging.handlers
 from decimal import Decimal
 from jsonschema.exceptions import ValidationError
 from twisted.internet import defer
-from twisted.internet.task import LoopingCall
 from lbrynet.metadata.Metadata import Metadata, verify_name_characters
 from lighthouse.updater.Metadata import MetadataManager
 

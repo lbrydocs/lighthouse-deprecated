@@ -111,8 +111,7 @@ class MetadataManager(object):
         r.update({"sources": {"lbry_sd_hash": sd_hash}})
         if fee is not None and not isinstance(fee, Failure):
             r.update({'fee': fee})
-        m = Metadata(r)
-        return m
+        return Metadata(r)
 
     def _get_metadata_for_claim(self, claim_id):
         d = self._db.runQuery("select * from metadata where claim_id=?", (claim_id, ))
