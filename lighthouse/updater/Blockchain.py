@@ -17,8 +17,9 @@ def _catch_connection_error(f):
         try:
             return f(*args)
         except socket.error:
-            raise ValueError("Unable to connect to an lbrycrd server. Make sure an lbrycrd server " +
-                             "is running and that this application can connect to it.")
+            raise ValueError(
+                "Unable to connect to an lbrycrd server. Make sure an lbrycrd server "
+                "is running and that this application can connect to it.")
     return w
 
 
@@ -72,7 +73,8 @@ class LBRYcrdManager(object):
         self.rpc_conn_string = None
         self.set_lbrycrd_attributes(lbrycrdd_data_dir, lbrycrdd_path, conf_path)
 
-    def set_lbrycrd_attributes(self, user_lbrycrdd_data_dir=None, user_lbrycrdd_path=None, user_lbrycrd_conf=None):
+    def set_lbrycrd_attributes(self, user_lbrycrdd_data_dir=None, user_lbrycrdd_path=None,
+                               user_lbrycrd_conf=None):
         if sys.platform == "darwin":
             _lbrycrdd_path = get_darwin_lbrycrdd_path()
             _lbrycrdd_data_dir = user_data_dir("lbrycrd")
@@ -104,13 +106,13 @@ class LBRYcrdManager(object):
     def _start_lbrycrdd(self):
         if not self.use_txindex:
             self.lbrycrdd_process = subprocess.Popen([self.lbrycrdd_path,
-                                              "-datadir=%s" % self.lbrycrdd_data_dir,
-                                              "-conf=%s" % self.lbrycrd_conf])
+                                                      "-datadir=%s" % self.lbrycrdd_data_dir,
+                                                      "-conf=%s" % self.lbrycrd_conf])
         else:
             self.lbrycrdd_process = subprocess.Popen([self.lbrycrdd_path,
-                                              "-datadir=%s" % self.lbrycrdd_data_dir,
-                                              "-conf=%s" % self.lbrycrd_conf,
-                                              "-txindex"])
+                                                      "-datadir=%s" % self.lbrycrdd_data_dir,
+                                                      "-conf=%s" % self.lbrycrd_conf,
+                                                      "-txindex"])
 
         self.started_lbrycrdd = True
 
@@ -120,18 +122,22 @@ class LBRYcrdManager(object):
             try:
                 self.rpc_conn().getinfo()
             except ValueError:
-                log.exception('Failed to get rpc info. Rethrowing with a hopefully more useful error message')
+                log.exception(
+                    'Failed to get rpc info. Rethrowing with a hopefully more useful error message')
                 raise Exception('Failed to get rpc info from lbrycrdd.  Try restarting lbrycrdd')
             log.info("lbrycrdd was already running when LBRYcrdManager was started.")
             return
         except (socket.error, JSONRPCException):
             tries += 1
-            log.info("lbrcyrdd was not running when LBRYcrdManager was started. Attempting to start it.")
+            log.info(
+                "lbrcyrdd was not running when LBRYcrdManager was started. Attempting to start it.")
         try:
             self._start_lbrycrdd()
         except OSError:
             import traceback
-            log.error("Couldn't launch lbrycrdd at path %s: %s", self.lbrycrdd_path, traceback.format_exc())
+            log.error(
+                "Couldn't launch lbrycrdd at path %s: %s",
+                self.lbrycrdd_path, traceback.format_exc())
             raise ValueError("Couldn't launch lbrycrdd. Tried %s" % self.lbrycrdd_path)
 
         while tries < 6:
@@ -162,10 +168,15 @@ class LBRYcrdManager(object):
         return defer.succeed(True)
 
     def get_most_recent_blocktime(self):
+        def get_block_time(block):
+            if 'time' in block:
+                return block['time']
+            else:
+                raise ValueError("Could not get a block time")
+
         d = threads.deferToThread(self._get_best_blockhash_rpc)
         d.addCallback(lambda blockhash: threads.deferToThread(self._get_block_rpc, blockhash))
-        d.addCallback(
-            lambda block: block['time'] if 'time' in block else Failure(ValueError("Could not get a block time")))
+        d.addCallback(get_block_time)
         return d
 
     def get_blockchain_height(self):

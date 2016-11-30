@@ -1,6 +1,5 @@
 import logging.handlers
 from twisted.web import resource
-from lighthouse.server.api import Lighthouse
 from lighthouse.server.LighthouseControl import LighthouseController
 
 log = logging.getLogger(__name__)
@@ -23,9 +22,9 @@ class Index(resource.Resource):
 
 
 class LighthouseServer(object):
-    def __init__(self):
+    def __init__(self, engine):
         self.root = Index()
-        self.search_engine = Lighthouse()
+        self.search_engine = engine
         self.root.putChild("", self.search_engine)
 
     def start(self):

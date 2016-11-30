@@ -7,7 +7,6 @@ from twisted.internet import defer
 
 from lighthouse.conf import CACHE_DIR
 from lighthouse.updater.Availability import StreamAvailabilityManager
-from lighthouse.updater.Blockchain import LBRYcrdManager
 from lighthouse.updater.Claimtrie import ClaimManager
 
 log = logging.getLogger(__name__)
@@ -36,12 +35,13 @@ def stop_if_running(looping_call):
 
 
 class DBUpdater(object):
-    def __init__(self):
+    def __init__(self, blockchain_manager):
+        reactor.addSystemEventTrigger('before', 'shutdown', self.stop)
         self.db = None
         self.cache_dir = CACHE_DIR
         self.db_path = os.path.join(self.cache_dir, "lighthouse.sqlite")
 
-        self.blockchain_manager = LBRYcrdManager()
+        self.blockchain_manager = blockchain_manager
         self.availability_manager = None
         self.claimtrie_manager = None
 

@@ -8,17 +8,16 @@ from twisted.internet import defer, reactor, error
 from twisted.web import server
 from lighthouse.conf import REFLECTOR_PORT
 from lighthouse.server.reflector import SDReflectorServerFactory
-from lighthouse.updater.Updater import DBUpdater
 from lighthouse.search.search import LighthouseSearch
 
 log = logging.getLogger(__name__)
 
 
 class Lighthouse(jsonrpc.JSONRPC):
-    def __init__(self):
+    def __init__(self, db_updater):
         jsonrpc.JSONRPC.__init__(self)
         reactor.addSystemEventTrigger('before', 'shutdown', self.shutdown)
-        self.database_updater = DBUpdater()
+        self.database_updater = db_updater
         self.search_engine = LighthouseSearch(self.database_updater)
         self.fuzzy_name_cache = []
         self.fuzzy_ratio_cache = {}
