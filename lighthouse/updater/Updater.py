@@ -4,6 +4,7 @@ import logging.handlers
 from twisted.enterprise import adbapi
 from twisted.internet.task import LoopingCall
 from twisted.internet import defer
+from twisted.internet import reactor
 
 from lighthouse.conf import CACHE_DIR
 from lighthouse.updater.Availability import StreamAvailabilityManager
