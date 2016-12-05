@@ -33,7 +33,7 @@ class Lighthouse(jsonrpc.JSONRPC):
         except ValueError:
             return server.failure
         functionPath = parsed.get("method")
-        if functionPath not in ["search"]:
+        if functionPath not in ["search", "get_size_for_name"]:
             return server.failure
         args = parsed.get('params')
         if len(args) != 1:
@@ -115,3 +115,6 @@ class Lighthouse(jsonrpc.JSONRPC):
 
     def jsonrpc_search(self, search):
         return self.search_engine.search(search)
+
+    def jsonrpc_get_size_for_name(self, name):
+        return self.search_engine.updater.availability_manager.get_size_for_name(name)
