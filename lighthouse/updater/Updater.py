@@ -161,8 +161,8 @@ class DBUpdater(object):
 
     def _update_name(self, name):
         def _do_update(_metadata):
-            self._update_metadata_cache(_metadata, name)
-            d = self.availability_manager.get_availability_for_name(name)
+            d = defer.succeed(self._update_metadata_cache(_metadata, name))
+            d.addCallback(lambda _: self.availability_manager.get_availability_for_name(name))
             d.addCallback(self._update_availability_cache, name)
             d.addCallback(lambda _: self.availability_manager.get_size_for_name(name))
             d.addCallback(self._update_size_cache, name)

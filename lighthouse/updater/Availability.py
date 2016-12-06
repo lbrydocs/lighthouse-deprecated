@@ -61,12 +61,13 @@ class StreamAvailabilityManager(object):
         return d
 
     def get_availability_for_name(self, name):
+        def _get_peer_count(claim_id):
+            d = self.db.runQuery("select peers from stream_availability where claim_id=?", (claim_id))
+            d.addCallback(lambda (peers, ): peers[0])
+            return d
+
         d = self.db.runQuery("select claim_id from claims where uri=?", (name, ))
-        d.addCallback(
-            lambda (claim_id, ): self.db.runQuery(
-                "select peers from stream_availability where claim_id=?",
-                (claim_id[0], )))
-        d.addCallback(lambda (peers, ): peers[0])
+        d.addCallback(lambda claim_id: 0 if not claim_id else _get_peer_count(claim_id[0]))
         return d
 
     def update_stream_size(self, claim_id, sd_hash):
