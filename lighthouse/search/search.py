@@ -1,7 +1,6 @@
 import logging.handlers
 from twisted.internet import defer, threads
 from fuzzywuzzy import process
-from lbrynet.metadata.Metadata import Metadata
 from lighthouse.util import add_or_move_to_front
 from lighthouse.conf import CACHE_SIZE, MAX_RETURNED_RESULTS, DEFAULT_WEIGHTS
 from lighthouse.conf import METADATA_INDEXES, DEFAULT_SETTINGS, FILTERED, MAX_RESULTS_CACHED
@@ -56,7 +55,7 @@ class FuzzyNameIndex(FuzzyIndex):
         d = threads.deferToThread(
             process.extract,
             search,
-            self.updater.metadata.keys(),
+            {n: n for n in self.updater.names},
             limit=max_results
         )
         d.addCallback(lambda r: self._update_cache(search, r))
@@ -65,12 +64,12 @@ class FuzzyNameIndex(FuzzyIndex):
 
 class FuzzyMetadataIndex(FuzzyIndex):
     def _process_search(self, search, max_results=MAX_RESULTS_CACHED, settings=DEFAULT_SETTINGS):
+        _metadata = self.updater.metadata
         d = threads.deferToThread(
             process.extract,
             search,
-            self.updater.metadata.keys(),
+            {n: _metadata[n][self.index] for n in self.updater.names},
             limit=max_results,
-            processor=lambda x: self.updater.metadata[x][self.index]
         )
         d.addCallback(lambda r: self._update_cache(search, r))
         return d
@@ -82,20 +81,14 @@ class LighthouseSearch(object):
         self.indexes = {key: FuzzyMetadataIndex(key, self.updater) for key in METADATA_INDEXES}
         self.indexes.update({'name': FuzzyNameIndex(self.updater)})
 
-    def _get_dict_for_return(self, name):
-        meta = Metadata(self.updater.metadata[name], process_now=True)
-        r = {
-            'name': name,
-            'value': meta,
-            'cost': self.updater.cost_and_availability[name]['cost'],
-            'available': self.updater.cost_and_availability[name]['available'],
-        }
-        return r
-
     def search(self, search, settings=DEFAULT_SETTINGS):
         def search_by(search, settings):
             search_keys = settings.get('search_by')
-            d = defer.DeferredList([self.indexes[search_by].search(search) for search_by in search_keys])
+            dl = []
+            for search_by in search_keys:
+                d = self.indexes[search_by].search(search)
+                dl.append(d)
+            d = defer.DeferredList(dl)
             d.addCallback(lambda r: {search_keys[i]: r[i][1] for i in range(len(search_keys))})
             return d
 
@@ -104,7 +97,11 @@ class LighthouseSearch(object):
             for k in results:
                 applied_weights = []
                 for v in results[k]:
-                    applied_weights.append((v[0], v[1] * DEFAULT_WEIGHTS[k]))
+                    weight = DEFAULT_WEIGHTS[k]
+                    # penalty for nearly empty fields that can otherwise score high
+                    if len(v[0]) < 2:
+                        weight = 0.25
+                    applied_weights.append((v[2], v[1] * weight))
                 r.update({k: applied_weights})
             return r
 
@@ -132,10 +129,10 @@ class LighthouseSearch(object):
             return results_without_duplicates
 
         def _format(results):
-            shortened = results[:min(MAX_RETURNED_RESULTS, len(results) - 1)]
+            shortened = results[:MAX_RETURNED_RESULTS]
             final = []
             for r in shortened:
-                final.append(self._get_dict_for_return(r[0]))
+                final.append(self.updater.get_stream_info(r[0]))
             return final
 
         def _direct_match(search, results):
@@ -148,7 +145,6 @@ class LighthouseSearch(object):
 
         # lcase search as to by default weigh lower-case names higher than names with odd capitalizations
         search = search.lower()
-
         d = search_by(search, settings)
         d.addCallback(_apply_weights)
         d.addCallback(_combine)

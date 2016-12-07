@@ -1,29 +1,28 @@
-import logging.handlers
 import time
-
+import logging.handlers
+from decimal import Decimal
 from txjsonrpc import jsonrpclib
 from txjsonrpc.web.jsonrpc import Handler
-from decimal import Decimal
-from twisted.internet import defer, reactor
-from twisted.web import server
 from txjsonrpc.web import jsonrpc
-from lighthouse.updater.MetadataUpdater import MetadataUpdater
+from twisted.internet import defer, reactor, error
+from twisted.web import server
+from lighthouse.conf import REFLECTOR_PORT
+from lighthouse.server.reflector import SDReflectorServerFactory
 from lighthouse.search.search import LighthouseSearch
 
 log = logging.getLogger(__name__)
 
 
 class Lighthouse(jsonrpc.JSONRPC):
-    def __init__(self):
+    def __init__(self, db_updater):
         jsonrpc.JSONRPC.__init__(self)
         reactor.addSystemEventTrigger('before', 'shutdown', self.shutdown)
-        self.metadata_updater = MetadataUpdater()
-        self.search_engine = LighthouseSearch(self.metadata_updater)
+        self.database_updater = db_updater
+        self.search_engine = LighthouseSearch(self.database_updater)
         self.fuzzy_name_cache = []
         self.fuzzy_ratio_cache = {}
         self.unique_clients = {}
         self.sd_cache = {}
-        self.running = False
 
     def render(self, request):
         request.content.seek(0, 0)
@@ -34,7 +33,7 @@ class Lighthouse(jsonrpc.JSONRPC):
         except ValueError:
             return server.failure
         functionPath = parsed.get("method")
-        if functionPath not in ["search", "announce_sd", "check_available"]:
+        if functionPath not in ["search", "get_size_for_name"]:
             return server.failure
         args = parsed.get('params')
         if len(args) != 1:
@@ -92,27 +91,30 @@ class Lighthouse(jsonrpc.JSONRPC):
         request.write(s)
         request.finish()
 
+    def _start_reflector(self):
+        log.info("Starting sd reflector")
+        reflector_factory = SDReflectorServerFactory(
+                    self.database_updater.availability_manager.peer_manager,
+                    self.database_updater.availability_manager.blob_manager,
+                    self.database_updater
+        )
+        try:
+            self.reflector_server_port = reactor.listenTCP(REFLECTOR_PORT, reflector_factory)
+            log.info('Started sd reflector on port %i', REFLECTOR_PORT)
+        except error.CannotListenError as e:
+            log.exception("Couldn't bind sd reflector to port %d", self.reflector_port)
+            raise ValueError("{} lighthouse may already be running on your computer.".format(e))
+
     def start(self):
-        self.running = True
-        self.metadata_updater.start()
+        d = self.database_updater.start()
+        d.addCallback(lambda _: self._start_reflector())
+        d.addErrback(log.exception)
 
     def shutdown(self):
-        self.running = False
-        self.metadata_updater.stop()
+        self.database_updater.stop()
 
     def jsonrpc_search(self, search):
         return self.search_engine.search(search)
 
-    def jsonrpc_announce_sd(self, sd_hash):
-        sd = self.metadata_updater.size_cache.get(sd_hash, False)
-        if sd:
-            return "Already announced"
-        self.metadata_updater.sd_attempts[sd_hash] = 0
-        self.metadata_updater.descriptors_to_download.append(sd_hash)
-        return "Pending"
-
-    def jsonrpc_check_available(self, sd_hash):
-        if self.metadata_updater.size_cache.get(sd_hash, False):
-            return True
-        else:
-            return False
+    def jsonrpc_get_size_for_name(self, name):
+        return self.search_engine.updater.availability_manager.get_size_for_name(name)

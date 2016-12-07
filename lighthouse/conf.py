@@ -1,5 +1,7 @@
 import yaml
 import os
+import base64
+from lbrynet.core.utils import generate_id
 
 
 def get_settings(path):
@@ -14,16 +16,19 @@ def save_settings(path, settings):
     f.write(yaml.dump(settings))
     f.close()
 
-conf = os.path.join(os.path.expanduser("~/"), ".lighthouse.yml")
+
+conf = os.path.join(os.path.expanduser("~"), ".lighthouse.yml")
 default_settings = {
-    'cache dir': os.path.join(os.path.expanduser("~/"), '.lighthouse'),
+    'cache dir': os.path.join(os.path.expanduser("~"), '.lighthouse'),
     'default search keys': ['title', 'description', 'author', 'name'],
-    'weights': {'name': 1.5, 'title': 1.25, 'description': 1.0, 'author': 1.25},
+    'weights': {'name': 1.25, 'title': 1.0, 'description': 1.0, 'author': 1.0},
     'max returned results': 25,
     'cache size': 1000,
-    'max results cached': 100,
+    'max results cached': 25,
     'max sd attempts': 1,
-    'filtered uris': ['socialengineering']
+    'filtered uris': ['socialengineering'],
+    'lbryid': base64.encodestring(generate_id()),
+    'reflector_port': 5567
 }
 
 if not os.path.isfile(conf):
@@ -47,6 +52,8 @@ CACHE_SIZE = settings['cache size']
 MAX_SD_TRIES = settings['max sd attempts']
 MAX_RESULTS_CACHED = settings['max results cached']
 FILTERED = settings['filtered uris']
+LBRYID = settings['lbryid']
+REFLECTOR_PORT = settings['reflector_port']
 
 if not os.path.isdir(CACHE_DIR):
     os.mkdir(CACHE_DIR)

@@ -1,10 +1,18 @@
-from lighthouse.server.LighthouseServer import LighthouseControllerServer, LighthouseServer
+import argparse
+import logging.handlers
+import os
+import sys
+
 from twisted.web import server
 from twisted.internet import reactor
 from jsonrpc.proxy import JSONRPCProxy
-import logging.handlers
-import sys
-import os
+
+from lbrynet import conf as lbrynet_conf
+from lighthouse.server.api import Lighthouse
+from lighthouse.server.LighthouseServer import LighthouseControllerServer, LighthouseServer
+from lighthouse.updater.Blockchain import LBRYcrdManager
+from lighthouse.updater.Updater import DBUpdater
+
 
 RPC_PORT = 50004
 
@@ -39,10 +47,18 @@ def cli():
 
 
 def start():
-    engine = LighthouseServer()
-    ecu = LighthouseControllerServer(engine.search_engine)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--lbrycrdd-data-dir')
+    args = parser.parse_args()
+    # the blob manager needs this directory to exists
+    lbrynet_conf.settings.ensure_data_dir()
+    lbrycrdd = LBRYcrdManager(args.lbrycrdd_data_dir)
+    db_updater = DBUpdater(lbrycrdd)
+    engine = Lighthouse(db_updater)
+    lighthouse_server = LighthouseServer(engine)
+    ecu = LighthouseControllerServer(engine)
     engine.start()
-    s = server.Site(engine.root)
+    s = server.Site(lighthouse_server.root)
     e = server.Site(ecu.root)
 
     reactor.listenTCP(50005, s)
@@ -58,3 +74,7 @@ def stop():
         print "lighthouse stopped"
     except:
         print "lighthouse wasn't running"
+
+
+if __name__ == "__main__":
+    start()
