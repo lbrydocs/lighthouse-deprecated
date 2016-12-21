@@ -7,6 +7,7 @@ import os
 from appdirs import user_data_dir
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from twisted.internet import threads, defer
+from lighthouse.conf import USE_TXINDEX, VERBOSE_LBRYCRDD
 
 log = logging.getLogger(__name__)
 
@@ -44,24 +45,7 @@ def get_lbrycrdd_connection_string(wallet_conf):
     return "http://%s:%s@%s:%i" % (rpc_user, rpc_pass, rpc_url, rpc_port)
 
 
-def get_darwin_lbrycrdd_path():
-    # use the path from the bundle if its available.
-    default = "./lbrycrdd"
-    try:
-        import Foundation
-    except ImportError:
-        log.warning('Foundation module not installed, falling back to default lbrycrdd path')
-        return default
-    else:
-        try:
-            bundle = Foundation.NSBundle.mainBundle()
-            return bundle.pathForResource_ofType_('lbrycrdd', None) or default
-        except Exception:
-            log.exception('Failed to get path from bundle, falling back to default')
-            return default
-
-
-def get_linux_lbrycrdd_path(data_dir):
+def get_lbrycrdd_path(data_dir):
     path_file = os.path.join(data_dir, "lbrycrdd_path")
     if os.path.isfile(path_file):
         with open(path_file, "r") as f:
@@ -71,10 +55,7 @@ def get_linux_lbrycrdd_path(data_dir):
 
 
 class LBRYcrdManager(object):
-    def __init__(self, lbrycrdd_data_dir=None, lbrycrdd_path=None, conf_path=None, txindex=True,
-                 verbose_lbrycrdd=False):
-        self.verbose_lbrycrdd = verbose_lbrycrdd
-        self.use_txindex = txindex
+    def __init__(self, lbrycrdd_data_dir=None, lbrycrdd_path=None, conf_path=None):
         self.lbrycrdd_process = None
         self.started_lbrycrdd = False
         self.lbrycrdd_data_dir = None
@@ -86,11 +67,10 @@ class LBRYcrdManager(object):
     def set_lbrycrd_attributes(self, user_lbrycrdd_data_dir=None, user_lbrycrdd_path=None,
                                user_lbrycrd_conf=None):
         if sys.platform == "darwin":
-            _lbrycrdd_path = get_darwin_lbrycrdd_path()
             _lbrycrdd_data_dir = user_data_dir("lbrycrd")
         else:
             _lbrycrdd_data_dir = os.path.join(os.path.expanduser("~"), ".lbrycrd")
-            _lbrycrdd_path = get_linux_lbrycrdd_path(user_lbrycrdd_data_dir or _lbrycrdd_data_dir)
+        _lbrycrdd_path = get_lbrycrdd_path(_lbrycrdd_data_dir)
         self.lbrycrdd_data_dir = user_lbrycrdd_data_dir or _lbrycrdd_data_dir
         self.lbrycrdd_path = user_lbrycrdd_path or _lbrycrdd_path
         self.lbrycrd_conf = user_lbrycrd_conf or os.path.join(self.lbrycrdd_data_dir, "lbrycrd.conf")
@@ -120,10 +100,10 @@ class LBRYcrdManager(object):
             "-conf=%s" % self.lbrycrd_conf
         ]
 
-        if self.use_txindex:
+        if USE_TXINDEX:
             start_lbrycrdd_command.append("-txindex")
 
-        if self.verbose_lbrycrdd:
+        if VERBOSE_LBRYCRDD:
             start_lbrycrdd_command.append("-printtoconsole")
 
         self.lbrycrdd_process = subprocess.Popen(start_lbrycrdd_command)

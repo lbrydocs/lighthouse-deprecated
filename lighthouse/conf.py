@@ -28,7 +28,9 @@ default_settings = {
     'max sd attempts': 1,
     'filtered uris': ['socialengineering'],
     'lbryid': base64.encodestring(generate_id()),
-    'reflector_port': 5567
+    'reflector_port': 5567,
+    'txindex': False,
+    'verbose lbrycrdd': False
 }
 
 if not os.path.isfile(conf):
@@ -54,6 +56,8 @@ MAX_RESULTS_CACHED = settings['max results cached']
 FILTERED = settings['filtered uris']
 LBRYID = settings['lbryid']
 REFLECTOR_PORT = settings['reflector_port']
+USE_TXINDEX = settings['txindex']
+VERBOSE_LBRYCRDD = settings['verbose lbrycrdd']
 
 if not os.path.isdir(CACHE_DIR):
     os.mkdir(CACHE_DIR)
