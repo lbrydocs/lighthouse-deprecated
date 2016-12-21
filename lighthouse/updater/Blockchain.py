@@ -65,13 +65,15 @@ def get_linux_lbrycrdd_path(data_dir):
     path_file = os.path.join(data_dir, "lbrycrdd_path")
     if os.path.isfile(path_file):
         with open(path_file, "r") as f:
-            return f.read()
+            return f.read().strip()
     log.warning("No lbrycrdd path set in %s, trying to find it in the cwd (%s)", path_file, os.getcwd())
     return "lbrycrdd"
 
 
 class LBRYcrdManager(object):
-    def __init__(self, lbrycrdd_data_dir=None, lbrycrdd_path=None, conf_path=None, txindex=True):
+    def __init__(self, lbrycrdd_data_dir=None, lbrycrdd_path=None, conf_path=None, txindex=True,
+                 verbose_lbrycrdd=False):
+        self.verbose_lbrycrdd = verbose_lbrycrdd
         self.use_txindex = txindex
         self.lbrycrdd_process = None
         self.started_lbrycrdd = False
@@ -112,15 +114,19 @@ class LBRYcrdManager(object):
         log.info("Connected to lbrycrdd!")
 
     def _start_lbrycrdd(self):
-        if not self.use_txindex:
-            self.lbrycrdd_process = subprocess.Popen([self.lbrycrdd_path,
-                                                      "-datadir=%s" % self.lbrycrdd_data_dir,
-                                                      "-conf=%s" % self.lbrycrd_conf])
-        else:
-            self.lbrycrdd_process = subprocess.Popen([self.lbrycrdd_path,
-                                                      "-datadir=%s" % self.lbrycrdd_data_dir,
-                                                      "-conf=%s" % self.lbrycrd_conf,
-                                                      "-txindex"])
+        start_lbrycrdd_command = [
+            self.lbrycrdd_path,
+            "-datadir=%s" % self.lbrycrdd_data_dir,
+            "-conf=%s" % self.lbrycrd_conf
+        ]
+
+        if self.use_txindex:
+            start_lbrycrdd_command.append("-txindex")
+
+        if self.verbose_lbrycrdd:
+            start_lbrycrdd_command.append("-printtoconsole")
+
+        self.lbrycrdd_process = subprocess.Popen(start_lbrycrdd_command)
 
         self.started_lbrycrdd = True
 
