@@ -7,7 +7,6 @@ import os
 from appdirs import user_data_dir
 from bitcoinrpc.authproxy import AuthServiceProxy, JSONRPCException
 from twisted.internet import threads, defer
-from twisted.python.failure import Failure
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +61,15 @@ def get_darwin_lbrycrdd_path():
             return default
 
 
+def get_linux_lbrycrdd_path(data_dir):
+    path_file = os.path.join(data_dir, "lbrycrdd_path")
+    if os.path.isfile(path_file):
+        with open(path_file, "r") as f:
+            return f.read()
+    log.warning("No lbrycrdd path set in %s, trying to find it in the cwd (%s)", path_file, os.getcwd())
+    return "lbrycrdd"
+
+
 class LBRYcrdManager(object):
     def __init__(self, lbrycrdd_data_dir=None, lbrycrdd_path=None, conf_path=None, txindex=True):
         self.use_txindex = txindex
@@ -79,8 +87,8 @@ class LBRYcrdManager(object):
             _lbrycrdd_path = get_darwin_lbrycrdd_path()
             _lbrycrdd_data_dir = user_data_dir("lbrycrd")
         else:
-            _lbrycrdd_path = "lbrycrdd"
             _lbrycrdd_data_dir = os.path.join(os.path.expanduser("~"), ".lbrycrd")
+            _lbrycrdd_path = get_linux_lbrycrdd_path(user_lbrycrdd_data_dir or _lbrycrdd_data_dir)
         self.lbrycrdd_data_dir = user_lbrycrdd_data_dir or _lbrycrdd_data_dir
         self.lbrycrdd_path = user_lbrycrdd_path or _lbrycrdd_path
         self.lbrycrd_conf = user_lbrycrd_conf or os.path.join(self.lbrycrdd_data_dir, "lbrycrd.conf")
