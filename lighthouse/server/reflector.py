@@ -28,7 +28,7 @@ class SDReflectorServer(Protocol):
         self.request_buff = ""
 
     def connectionLost(self, reason=failure.Failure(error.ConnectionDone())):
-        log.info("Reflector upload from %s finished" % self.peer.host)
+        log.info("upload from %s finished" % self.peer.host)
 
     def dataReceived(self, data):
         if self.receiving_blob:
@@ -86,13 +86,13 @@ class SDReflectorServer(Protocol):
 
     def determine_blob_needed(self, blob):
         if blob.blob_hash not in self.lighthouse_updater.sd_hashes:
-            log.info("blob not needed %s", blob.blob_hash)
+            log.info("rejecting blob %s", str(blob.blob_hash)[:10])
             return {'send_blob': False}
         if blob.is_validated():
-            log.info("already have blob %s", blob.blob_hash)
+            log.debug("already have blob %s", str(blob.blob_hash)[:10])
             return {'send_blob': False}
         else:
-            log.info("get blob %s", blob.blob_hash)
+            log.info("receiving blob %s", str(blob.blob_hash)[:10])
             self.incoming_blob = blob
             self.blob_finished_d, self.blob_write, self.cancel_write = blob.open_for_writing(self.peer)
             self.blob_finished_d.addCallback(lambda _: self.blob_manager.blob_completed(blob))
@@ -115,7 +115,7 @@ class SDReflectorServer(Protocol):
                 raise ValueError("Expected a blob hash and a blob size")
             if not is_valid_blobhash(request_dict['blob_hash']):
                 raise ValueError("Got a bad blob hash: {}".format(request_dict['blob_hash']))
-            log.info('Recieved info for blob: %s', request_dict['blob_hash'])
+            log.debug('Recieved info for blob: %s', request_dict['blob_hash'])
             d = self.blob_manager.get_blob(
                 request_dict['blob_hash'],
                 True,
