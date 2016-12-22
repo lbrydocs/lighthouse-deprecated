@@ -4,6 +4,7 @@ from decimal import Decimal
 from jsonschema.exceptions import ValidationError
 from twisted.internet import defer
 from lbrynet.metadata.Metadata import Metadata, verify_name_characters
+from lbrynet.core.Error import InvalidName
 from lighthouse.updater.Metadata import MetadataManager
 
 log = logging.getLogger(__name__)
@@ -207,16 +208,21 @@ class ClaimManager(object):
             txid, nout = claimtrie[name]
             try:
                 verify_name_characters(name)
-            except Exception:
+            except (AssertionError, InvalidName, UnicodeEncodeError):
                 d = self._add_claim_to_skipped(txid, nout)
             else:
                 d = self._get_winning_tx_for_name(name)
                 d.addCallback(_check_tx, txid, nout)
                 d.addCallback(_update_if_needed, txid)
+            yield d
+
+    def handle_claimtrie_response(self, claimtrie):
+        dl = list(self._handle_claimtrie_response(claimtrie))
+        return defer.DeferredList(dl)
 
     def update(self):
         d = self.blockchain_manager.get_nametrie()
-        d.addCallback(lambda claimtrie: self._handle_claimtrie_response(claimtrie))
+        d.addCallback(self.handle_claimtrie_response)
         return d
 
     def get_claimed_names(self):
