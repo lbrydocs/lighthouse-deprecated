@@ -1,0 +1,6 @@
+Twisted==16.0.0
+lbrynet
+fuzzywuzzy
+python-Levenshtein
+PyYAML
+python-bitcoinrpc
