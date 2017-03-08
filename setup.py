@@ -16,7 +16,7 @@ setup(name='lighthouse',
       maintainer='Jack Robison',
       maintainer_email='jackrobison@lbry.io',
       install_requires=requires,
-      packages=find_packages(base_dir),
+      packages=find_packages(base_dir, exclude=['tests']),
       entry_points={'console_scripts': console_scripts},
       dependency_links=['https://github.com/lbryio/lbryum/tarball/master/#egg=lbryum'],
       )
