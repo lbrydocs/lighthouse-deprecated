@@ -1,8 +1,5 @@
-import logging.handlers
 from twisted.internet import reactor
 from txjsonrpc.web import jsonrpc
-
-log = logging.getLogger(__name__)
 
 
 class LighthouseController(jsonrpc.JSONRPC):

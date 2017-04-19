@@ -4,11 +4,18 @@ import os
 
 base_dir = os.path.abspath(os.path.dirname(__file__))
 
-console_scripts = ['start-lighthouse = lighthouse.Control:start',
-                   'silenceinthelbry = lighthouse.Control:stop',
+console_scripts = ['lighthouse-start = lighthouse.Control:start',
+                   'lighthouse-stop = lighthouse.Control:stop',
                    'lighthouse-cli = lighthouse.Control:cli']
 
-requires = ['lbrynet', 'fuzzywuzzy', 'python-Levenshtein', 'PyYAML', 'python-bitcoinrpc']
+requires = [
+      'lbrynet',
+      'fuzzywuzzy',
+      'python-Levenshtein',
+      'PyYAML',
+      'python-bitcoinrpc',
+      'lbryschema==0.0.3'
+]
 
 setup(name='lighthouse',
       description='Basic search engine for publications on the lbrycrd blockchain',
@@ -18,5 +25,4 @@ setup(name='lighthouse',
       install_requires=requires,
       packages=find_packages(base_dir, exclude=['tests']),
       entry_points={'console_scripts': console_scripts},
-      dependency_links=['https://github.com/lbryio/lbryum/tarball/master/#egg=lbryum'],
       )

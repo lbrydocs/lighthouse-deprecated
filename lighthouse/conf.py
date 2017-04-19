@@ -20,13 +20,13 @@ def save_settings(path, settings):
 conf = os.path.join(os.path.expanduser("~"), ".lighthouse.yml")
 default_settings = {
     'cache dir': os.path.join(os.path.expanduser("~"), '.lighthouse'),
-    'default search keys': ['title', 'description', 'author', 'name'],
+    'default search keys': ['title', 'description', 'author'],
     'weights': {'name': 1.25, 'title': 1.0, 'description': 1.0, 'author': 1.0},
     'max returned results': 25,
     'cache size': 1000,
     'max results cached': 25,
     'max sd attempts': 1,
-    'filtered uris': ['socialengineering'],
+    'filtered': [],
     'lbryid': base64.encodestring(generate_id()),
     'reflector_port': 5567,
     'txindex': False,
@@ -53,7 +53,7 @@ MAX_RETURNED_RESULTS = settings['max returned results']
 CACHE_SIZE = settings['cache size']
 MAX_SD_TRIES = settings['max sd attempts']
 MAX_RESULTS_CACHED = settings['max results cached']
-FILTERED = settings['filtered uris']
+FILTERED = settings['filtered']
 LBRYID = settings['lbryid']
 REFLECTOR_PORT = settings['reflector_port']
 USE_TXINDEX = settings['txindex']

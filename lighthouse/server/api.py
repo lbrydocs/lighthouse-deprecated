@@ -4,27 +4,30 @@ from decimal import Decimal
 from txjsonrpc import jsonrpclib
 from txjsonrpc.web.jsonrpc import Handler
 from txjsonrpc.web import jsonrpc
-from twisted.internet import defer, reactor, error
+from twisted.internet import defer, reactor, error, threads
 from twisted.web import server
 from lighthouse.conf import REFLECTOR_PORT
 from lighthouse.server.reflector import SDReflectorServerFactory
+from lighthouse.updater.Availability import StreamAvailabilityManager
 from lighthouse.search.search import LighthouseSearch
 
 log = logging.getLogger(__name__)
 
 
 class Lighthouse(jsonrpc.JSONRPC):
-    def __init__(self, db_updater):
+    def __init__(self, claim_manager):
         jsonrpc.JSONRPC.__init__(self)
         reactor.addSystemEventTrigger('before', 'shutdown', self.shutdown)
-        self.database_updater = db_updater
-        self.search_engine = LighthouseSearch(self.database_updater)
-        self.fuzzy_name_cache = []
-        self.fuzzy_ratio_cache = {}
-        self.unique_clients = {}
-        self.sd_cache = {}
+        self.claim_manager = claim_manager
+        self.availability_manager = StreamAvailabilityManager(claim_manager.storage)
+        self.search_engine = LighthouseSearch(self.claim_manager)
+
+    def _log_response(self, result, peer, time_in, method, params):
+        log.info("%s - %s(%s): %f", peer, method, str(params), round(time.time()-time_in, 5))
+        return result
 
     def render(self, request):
+        t_in = time.time()
         request.content.seek(0, 0)
         # Unmarshal the JSON-RPC data.
         content = request.content.read()
@@ -33,23 +36,11 @@ class Lighthouse(jsonrpc.JSONRPC):
         except ValueError:
             return server.failure
         functionPath = parsed.get("method")
-        if functionPath not in ["search", "get_size_for_name"]:
-            return server.failure
         args = parsed.get('params')
-        if len(args) != 1:
-            return server.failure
-        arg = args[0]
         id = parsed.get('id')
         version = parsed.get('jsonrpc')
-        try:
-            log.info("%s@%s: %s" % (functionPath, request.getClientIP(), arg))
-        except Exception as err:
-            log.error(err.message)
+        peer = request.transport.getPeer()
 
-        if self.unique_clients.get(request.getClientIP(), None) is None:
-            self.unique_clients[request.getClientIP()] = [[functionPath, arg, time.time()]]
-        else:
-            self.unique_clients[request.getClientIP()].append([functionPath, arg, time.time()])
         if version:
             version = int(float(version))
         elif id and not version:
@@ -65,9 +56,10 @@ class Lighthouse(jsonrpc.JSONRPC):
         else:
             request.setHeader("access-control-allow-origin", "*")
             request.setHeader("content-type", "text/json")
-            d = defer.maybeDeferred(function, arg)
+            d = defer.maybeDeferred(function, *args)
             d.addErrback(self._ebRender, id)
             d.addCallback(self._cbRender, request, id, version)
+            d.addCallback(self._log_response, peer, t_in, functionPath, args)
         return server.NOT_DONE_YET
 
     def _cbRender(self, result, request, id, version):
@@ -91,12 +83,14 @@ class Lighthouse(jsonrpc.JSONRPC):
         request.write(s)
         request.finish()
 
+
     def _start_reflector(self):
         log.info("Starting sd reflector")
         reflector_factory = SDReflectorServerFactory(
-                    self.database_updater.availability_manager.peer_manager,
-                    self.database_updater.availability_manager.blob_manager,
-                    self.database_updater
+                    self.availability_manager.peer_manager,
+                    self.availability_manager.blob_manager,
+                    self.claim_manager.claim_cache,
+                    self.claim_manager.storage
         )
         try:
             self.reflector_server_port = reactor.listenTCP(REFLECTOR_PORT, reflector_factory)
@@ -105,16 +99,34 @@ class Lighthouse(jsonrpc.JSONRPC):
             log.exception("Couldn't bind sd reflector to port %d", self.reflector_port)
             raise ValueError("{} lighthouse may already be running on your computer.".format(e))
 
+    @defer.inlineCallbacks
     def start(self):
-        d = self.database_updater.start()
-        d.addCallback(lambda _: self._start_reflector())
-        d.addErrback(log.exception)
+        yield self.claim_manager.start()
+        yield self.availability_manager.start()
+        self._start_reflector()
 
     def shutdown(self):
-        self.database_updater.stop()
+        yield self.claim_manager.stop()
+        yield self.availability_manager.stop()
+        log.info("Shutting down")
 
-    def jsonrpc_search(self, search):
-        return self.search_engine.search(search)
+    @defer.inlineCallbacks
+    def jsonrpc_search(self, search, search_by=None, channel_filter=None):
+
+        if channel_filter is not None:
+            claim_ids = yield self.claim_manager.storage.get_channel_claim_ids(channel_filter)
+        else:
+            claim_ids = None
+
+        result = yield threads.deferToThread(self.search_engine.search, search, search_by, claim_ids)
+        response = yield self.search_engine.format_response(result)
+        defer.returnValue(response)
 
     def jsonrpc_get_size_for_name(self, name):
-        return self.search_engine.updater.availability_manager.get_size_for_name(name)
+        return self.claim_manager.storage.get_stream_size_for_name(name)
+
+    def jsonrpc_get_size_for_claim(self, claim_id):
+        return self.claim_manager.storage.get_stream_size_for_claim(claim_id)
+
+    def jsonrpc_get_size_for_stream(self, sd_hash):
+        return self.claim_manager.storage.get_stream_size(sd_hash)
