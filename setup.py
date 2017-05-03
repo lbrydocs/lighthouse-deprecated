@@ -16,7 +16,7 @@ requires = [
       'python-bitcoinrpc',
       'lbryschema==0.0.4',
       'lbryum==2.7.21',
-      'lbrynet==0.10.0rc12',
+      'lbrynet==0.10.2',
       'lbryum-server==1.0.2'
 ]
 
