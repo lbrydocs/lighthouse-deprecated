@@ -18,5 +18,5 @@ h.setFormatter(DEFAULT_FORMATTER)
 log.addHandler(h)
 log.setLevel(logging.INFO)
 
-__version__ = "0.0.5"
+__version__ = "0.0.6"
 version = tuple(__version__.split('.'))
