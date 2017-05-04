@@ -388,7 +388,7 @@ class SQLiteStorage(object):
 
         for name, (txid, nout) in changes.iteritems():
             if name not in known_winning_dict:
-                yield self._run_operation("INSERT INTO claimtrie(claim_name, claim_id) SELECT claim_name, id FROM claims WHERE txid=? AND nout=?",
+                yield self._run_operation("INSERT OR REPLACE INTO claimtrie(claim_name, claim_id) SELECT claim_name, id FROM claims WHERE txid=? AND nout=?",
                     (txid, nout))
                 update_cnt += 1
 
