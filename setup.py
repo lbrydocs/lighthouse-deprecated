@@ -15,7 +15,7 @@ requires = [
       'PyYAML',
       'python-bitcoinrpc',
       'lbryschema==0.0.4',
-      'lbryum==2.7.21',
+      'lbryum==2.7.22',
       'lbrynet==0.10.2',
       'lbryum-server==1.0.2'
 ]
