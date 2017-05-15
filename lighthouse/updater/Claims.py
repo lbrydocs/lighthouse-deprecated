@@ -688,15 +688,18 @@ class LBRYcrdManager(object):
     def validate_and_register_claim_to_channel(self, claim, claim_id, txid, nout, name):
         claim_address = yield self.get_claim_outpoint_address(txid, nout)
         certificate_info = yield self.storage.get_claim(claim.certificate_id)
-        certificate = certificate_info['claim']
-        try:
-            validated = yield claim.validate_signature(claim_address, certificate)
-            if validated:
-                yield self.storage.register_claim_to_channel(claim_id, certificate_info['claim_id'])
-                log.info("validated signature for lbry://%s#%s/%s", certificate_info['name'],
-                         certificate_info['claim_id'], name)
-        except:
-            pass
+        if not certificate_info:
+            log.warning("Cannot validate %s#%s, missing certificate", name, claim_id)
+        else:
+            certificate = certificate_info['claim']
+            try:
+                validated = yield claim.validate_signature(claim_address, certificate)
+                if validated:
+                    yield self.storage.register_claim_to_channel(claim_id, certificate_info['claim_id'])
+                    log.info("validated signature for lbry://%s#%s/%s", certificate_info['name'],
+                             certificate_info['claim_id'], name)
+            except:
+                pass
 
     @defer.inlineCallbacks
     def sync_claimtrie(self):
