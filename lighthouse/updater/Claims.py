@@ -370,7 +370,7 @@ class SQLiteStorage(object):
 
         for to_drop in drop_names:
             log.info("Deleting %s", to_drop)
-            yield self._run_operation("DELETE FROM claimtrie WHERE name=?", (to_drop,))
+            yield self._run_operation("DELETE FROM claimtrie WHERE claim_name=?", (to_drop,))
 
         changes = {}
         for name, winning in current_claimtrie.iteritems():
