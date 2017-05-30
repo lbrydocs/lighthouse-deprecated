@@ -14,10 +14,10 @@ requires = [
       'python-Levenshtein',
       'PyYAML',
       'python-bitcoinrpc',
-      'lbryschema==0.0.4',
-      'lbryum==2.7.22',
-      'lbrynet==0.10.3rc2',
-      'lbryum-server==1.0.2'
+      'lbryschema==0.0.6',
+      'lbryum==2.7.23',
+      'lbrynet==0.10.3production2',
+      'lbryum-server==1.0.5'
 ]
 
 setup(name='lighthouse',

@@ -1,8 +1,8 @@
 Twisted==16.6.0
-git+https://github.com/lbryio/lbryschema.git@v0.0.4#egg=lbryschema
-git+https://github.com/lbryio/lbryum-server.git@v1.0.2#egg=lbryum-server
-git+https://github.com/lbryio/lbryum.git@v2.7.22#egg=lbryum
-git+https://github.com/lbryio/lbry.git@v0.10.2#egg=lbrynet
+git+https://github.com/lbryio/lbryschema.git@v0.0.6#egg=lbryschema
+git+https://github.com/lbryio/lbryum-server.git@v1.0.5#egg=lbryum-server
+git+https://github.com/lbryio/lbryum.git@v2.7.23#egg=lbryum
+git+https://github.com/lbryio/lbry.git@v0.10.3production2#egg=lbrynet
 fuzzywuzzy
 python-Levenshtein
 PyYAML
